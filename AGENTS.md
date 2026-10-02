@@ -25,3 +25,7 @@
 
 - Windows 保持 self-contained、unpackaged WinUI 3 前端 + 无控制台窗口的 Go sidecar，并由 Velopack 按用户安装和整体替换。
 - 发布产物必须包含 `.pri`、XAML 资源、Go sidecar 与运行时；安装、更新、卸载和应用启动都需在真实 Windows 环境验证。
+
+## Fork desktop enhancement work
+
+For the fork's desktop enhancement requirements, implementation, or acceptance review, start with `docs/desktop-enhancement/README.md`. Use its PRD for proposed behavior, its implementation plan for verification gates, and `UPSTREAM.md` when changing compatibility, process control, package trust, installation, or updates. Keep proposed capabilities distinct from upstream's currently implemented product; the architecture and generated-source rules above continue to apply.
