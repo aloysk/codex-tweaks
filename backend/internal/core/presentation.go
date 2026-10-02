@@ -120,6 +120,14 @@ func NewPresentationContractForPlatform(state PresentationState, operatingSystem
 	} else if operatingSystem == "windows" {
 		strategy = "velopack"
 	}
+	status := statusPresentation(state.Status, text)
+	if operatingSystem != "windows" {
+		text["overview.restartDetail"] = text["runtime.enhancementUnsupported"]
+		if state.Status.Kind == StatusRestartRequired || state.Status.Kind == StatusWaitingForCDP {
+			status.Title = text["runtime.enhancementUnsupportedTitle"]
+			status.Detail = text["runtime.enhancementUnsupported"]
+		}
+	}
 	return PresentationContract{
 		Version:            PresentationContractVersion,
 		Locale:             string(locale),
@@ -130,7 +138,7 @@ func NewPresentationContractForPlatform(state PresentationState, operatingSystem
 		Tokens:             PresentationTokensForPlatform(operatingSystem),
 		Actions: AvailableActions{
 			OpenCodex:                  true,
-			RestartCodex:               state.Status.Kind == StatusRestartRequired || state.Status.Kind == StatusCodexNotRunning,
+			RestartCodex:               operatingSystem == "windows" && (state.Status.Kind == StatusRestartRequired || state.Status.Kind == StatusCodexNotRunning),
 			RestartCodexUI:             false,
 			Reinject:                   state.Enabled && cdpAvailable && !state.RestartingCodexUI,
 			OpenPackagesDirectory:      true,
@@ -153,7 +161,7 @@ func NewPresentationContractForPlatform(state PresentationState, operatingSystem
 			SetLanguage:                true,
 			InstallAppUpdate:           ApplicationUpdatesEnabled && (operatingSystem == "windows" || state.UpdateAvailable),
 		},
-		Status: statusPresentation(state.Status, text),
+		Status: status,
 		Platform: PlatformPresentation{
 			OperatingSystem:       operatingSystem,
 			Architecture:          architecture,
@@ -255,7 +263,9 @@ func presentationTextZhCN() map[string]string {
 		"app.backendDateMalformed":                    "无法解析 Go 后端返回的日期：{value}",
 		"app.backendRequestFailed":                    "Go 后端请求失败。",
 		"app.backendTimedOut":                         "Go 后端响应超时。",
-		"app.backendShutdownIncomplete":               "尚未确认页面清理完成，请检查恢复状态。",
+		"app.backendShutdownIncomplete":               "尚未确认页面清理完成。Companion 将退出；请保存工作，正常结束官方 Codex 后从官方入口重新打开。",
+		"runtime.enhancementUnsupportedTitle":         "页面增强暂不可用",
+		"runtime.enhancementUnsupported":              "此平台尚未核验官方 Codex 的调试监听归属，页面增强暂不可用；仍可正常打开官方 Codex 和管理本地设置。",
 		"app.backendRequestCreateFailed":              "无法创建 Go 后端请求。",
 		"app.protocolMismatch":                        "Go 后端协议版本不匹配。",
 		"nav.overview":                                "概览",

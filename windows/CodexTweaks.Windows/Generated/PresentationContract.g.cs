@@ -264,6 +264,8 @@ internal static class PresentationTextKey
     internal const string RemoteSubtitle = "remote.subtitle";
     internal const string RemoteTitle = "remote.title";
     internal const string RemoteValidationDetail = "remote.validationDetail";
+    internal const string RuntimeEnhancementUnsupported = "runtime.enhancementUnsupported";
+    internal const string RuntimeEnhancementUnsupportedTitle = "runtime.enhancementUnsupportedTitle";
     internal const string SelectorBranch = "selector.branch";
     internal const string SelectorBranchDefault = "selector.branchDefault";
     internal const string SelectorBranchValue = "selector.branchValue";
@@ -532,6 +534,13 @@ internal sealed class PresentationContract
 
 }
 
+internal sealed class ShutdownResult
+{
+    [JsonPropertyName("shutdown")]
+    public bool Shutdown { get; init; }
+
+}
+
 internal static class PresentationDefaults
 {
     internal static IReadOnlyDictionary<string, string> Text { get; } = new Dictionary<string, string>
@@ -542,7 +551,7 @@ internal static class PresentationDefaults
         [PresentationTextKey.AppBackendNotRunning] = "The Go backend is not running.",
         [PresentationTextKey.AppBackendRequestCreateFailed] = "Could not create the Go backend request.",
         [PresentationTextKey.AppBackendRequestFailed] = "The Go backend request failed.",
-        [PresentationTextKey.AppBackendShutdownIncomplete] = "Page cleanup has not been confirmed. Check the recovery status.",
+        [PresentationTextKey.AppBackendShutdownIncomplete] = "Page cleanup has not been confirmed. Companion will exit; save your work, normally exit the official Codex app, then reopen it from its official entry point.",
         [PresentationTextKey.AppBackendTerminated] = "The Go backend exited with status {status}.",
         [PresentationTextKey.AppBackendTimedOut] = "The Go backend response timed out.",
         [PresentationTextKey.AppName] = "Codex Tweaks Companion",
@@ -780,6 +789,8 @@ internal static class PresentationDefaults
         [PresentationTextKey.RemoteSubtitle] = "The app resolves the remote reference, pins an exact commit, validates the package in a temporary directory, and then saves immutable source.",
         [PresentationTextKey.RemoteTitle] = "Install package from Git",
         [PresentationTextKey.RemoteValidationDetail] = "Installation validates package.json, the API version, SemVer, entry points, package dependencies, and the npm lockfile. New packages remain disabled by default. When Node.js is available, locked dependencies are downloaded and the package is built, but it is not enabled automatically.",
+        [PresentationTextKey.RuntimeEnhancementUnsupported] = "Ownership of the official Codex debugging listener has not been verified on this platform. Page enhancement is unavailable; normal Codex launch and local settings remain available.",
+        [PresentationTextKey.RuntimeEnhancementUnsupportedTitle] = "Page enhancement unavailable",
         [PresentationTextKey.SelectorBranch] = "Specific branch",
         [PresentationTextKey.SelectorBranchDefault] = "main",
         [PresentationTextKey.SelectorBranchValue] = "Branch name",

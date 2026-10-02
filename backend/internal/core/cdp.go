@@ -221,7 +221,7 @@ func (s *CDPService) Inject(ctx context.Context, payload Payload, forceGeneratio
 	for _, target := range targets {
 		ready, err := s.targetDOMReady(ctx, *target.WebSocketDebuggerURL)
 		if err != nil {
-			s.logError(fmt.Sprintf("目标 %s 页面就绪检查失败：%v", target.ID, err))
+			s.logError(fmt.Sprintf("页面就绪检查失败：target=%s class=%s", target.ID, diagnosticErrorClass(err)))
 			result.TargetCount++
 			fail(target.ID, err)
 			continue
@@ -242,7 +242,7 @@ func (s *CDPService) Inject(ctx context.Context, payload Payload, forceGeneratio
 		}
 		bridgeSessionID, nodeTokens, settingsAdapter, err := s.rendererBridgeForTargetLocked(ctx, target, payload)
 		if err != nil {
-			s.logError(fmt.Sprintf("目标 %s 无法建立能力通道：%v", target.ID, err))
+			s.logError(fmt.Sprintf("能力通道建立失败：target=%s class=%s", target.ID, diagnosticErrorClass(err)))
 			fail(target.ID, err)
 			continue
 		}
@@ -275,7 +275,7 @@ func (s *CDPService) Inject(ctx context.Context, payload Payload, forceGeneratio
 		script := injectionScriptOwned(payload, forceGeneration, bridgeSessionID, nodeTokens, settingsAdapter, s.owner, s.epoch)
 		value, err = s.evaluate(ctx, script, *target.WebSocketDebuggerURL)
 		if err != nil {
-			s.logError(fmt.Sprintf("目标 %s 注入失败：%v", target.ID, err))
+			s.logError(fmt.Sprintf("页面注入失败：target=%s class=%s", target.ID, diagnosticErrorClass(err)))
 			fail(target.ID, err)
 			continue
 		}
@@ -307,7 +307,7 @@ func (s *CDPService) logSettingsAdapterRuntimeError(targetID string, value map[s
 	}
 	session.settingsAdapterRuntimeError = message
 	if message != "" {
-		s.logError("目标 " + targetID + " 的 Codex 设置适配失败：" + message)
+		s.logError("Codex 设置适配失败：target=" + targetID + " class=renderer")
 	}
 }
 
@@ -371,7 +371,7 @@ func (s *CDPService) CleanupAllTargets(ctx context.Context) (CDPCleanupResult, e
 		} else {
 			item.Error = err.Error()
 			failures = append(failures, fmt.Errorf("target %s cleanup: %w", targetID, err))
-			s.logError(fmt.Sprintf("目标 %s 清理失败：%v", targetID, err))
+			s.logError(fmt.Sprintf("页面清理失败：target=%s failed=1 class=%s", targetID, diagnosticErrorClass(err)))
 		}
 		result.Targets = append(result.Targets, item)
 	}

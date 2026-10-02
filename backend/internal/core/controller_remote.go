@@ -150,7 +150,7 @@ func (c *Controller) InstallMissingDependencies(packageID string) error {
 		}
 		c.mu.Unlock()
 		if err != nil {
-			c.logger.Error("安装功能包依赖失败：" + err.Error())
+			c.logger.Error("安装功能包依赖失败：class=" + diagnosticErrorClass(err))
 			c.emit()
 			return
 		}
@@ -244,7 +244,7 @@ func (c *Controller) UpdateManagedPackage(packageID string) error {
 		}
 		c.mu.Unlock()
 		if err != nil {
-			c.logger.Error("更新远程功能包失败：" + err.Error())
+			c.logger.Error("更新远程功能包失败：class=" + diagnosticErrorClass(err))
 			c.emit()
 			return
 		}

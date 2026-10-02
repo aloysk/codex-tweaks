@@ -291,7 +291,7 @@ func (s *NodeRuntimeSupervisor) recordStartFailure(packageID, authorizationID, m
 		start.Cancel()
 	}
 	if recorded && s.logger != nil {
-		s.logger.Error("Node 功能包 " + packageID + " 启动失败：" + message)
+		s.logger.Error("Node 功能包 " + packageID + " 启动失败（外部正文未记录）")
 	}
 }
 

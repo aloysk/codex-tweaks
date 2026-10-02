@@ -155,6 +155,18 @@ func TestPresentationContractUsesSparkleForMacOSUpdates(t *testing.T) {
 	}
 }
 
+func TestPresentationContractDoesNotOfferUnsupportedMacEnhancedLaunch(t *testing.T) {
+	state := PresentationState{Status: AppStatus{Kind: StatusRestartRequired}, LanguagePreference: LanguageEnglish}
+	mac := NewPresentationContractForPlatform(state, "darwin", "arm64")
+	if mac.Actions.RestartCodex || !mac.Actions.OpenCodex || mac.Status.Detail != mac.Text["runtime.enhancementUnsupported"] {
+		t.Fatalf("unsupported enhancement must preserve ordinary launch and explain the limit: %#v", mac)
+	}
+	windows := NewPresentationContractForPlatform(state, "windows", "x64")
+	if !windows.Actions.RestartCodex || !windows.Actions.OpenCodex {
+		t.Fatal("verified Windows launch capability was disabled")
+	}
+}
+
 func TestPresentationContractKeepsPlatformWindowMetricsIndependent(t *testing.T) {
 	macOS := NewPresentationContractForPlatform(PresentationState{}, "darwin", "universal")
 	windows := NewPresentationContractForPlatform(PresentationState{}, "windows", "x64")

@@ -176,6 +176,10 @@ type AppSnapshot struct {
 	Update                     UpdateSnapshot                `json:"update"`
 }
 
+type ShutdownResult struct {
+	Shutdown bool `json:"shutdown"`
+}
+
 type ControllerDependencies struct {
 	Runner            CommandRunner
 	HTTPClient        *http.Client

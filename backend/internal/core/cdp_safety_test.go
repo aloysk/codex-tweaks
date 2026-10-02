@@ -185,6 +185,39 @@ func TestCDPCleanupAggregatesFailuresAndRetriesRemainingTargets(t *testing.T) {
 	}
 }
 
+func TestCDPExternalFailureBodiesStayInMemory(t *testing.T) {
+	const canary = "a private conversation sentence without any credential format"
+	server := newCDPSafetyFixture(t, []string{"main"}, func(_ string, expression string) (map[string]any, bool) {
+		if strings.Contains(expression, "const result = await runtime.cleanup()") {
+			return map[string]any{"status": "cleanupFailed", "errors": []any{map[string]any{"message": canary}}}, true
+		}
+		return fixtureInjectionResponse(expression), true
+	})
+	service := newSyntheticCDP(t, server.URL)
+	logger, err := NewLogger(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.logger = logger
+	if _, err := service.Inject(context.Background(), Payload{Version: "fixture"}, 0); err != nil {
+		t.Fatal(err)
+	}
+	service.sessions["settings-fixture"] = &rendererBridgeSession{}
+	service.logSettingsAdapterRuntimeError("settings-fixture", map[string]any{"settingsAdapterError": canary})
+	delete(service.sessions, "settings-fixture")
+	_, err = service.CleanupAllTargets(context.Background())
+	if err == nil || !strings.Contains(err.Error(), canary) {
+		t.Fatal("requested in-memory cleanup diagnostic was lost")
+	}
+	preview, err := logger.ReadPreviewNewestFirst()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(preview, canary) {
+		t.Fatal("external body was persisted")
+	}
+}
+
 func TestCDPTracksAnEvaluationBeforeItsAcknowledgement(t *testing.T) {
 	var modified atomic.Bool
 	server := newCDPSafetyFixture(t, []string{"main"}, func(_ string, expression string) (map[string]any, bool) {

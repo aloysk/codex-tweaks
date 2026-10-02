@@ -81,6 +81,7 @@ final class AppModel: ObservableObject {
     private var isApplyingSnapshot = false
     private var hasStarted = false
     private var isStoppingBackend = false
+    private var hasBackendConnectionFailed = false
     private var promptCopyResetTask: Task<Void, Never>?
 
     private init() {}
@@ -164,12 +165,21 @@ final class AppModel: ObservableObject {
         backend.stateHandler = { [weak self] snapshot in
             self?.apply(snapshot)
         }
+        backend.failureHandler = { [weak self] failure in
+            guard let self else { return }
+            switch failure {
+            case .connectionLost:
+                self.hasBackendConnectionFailed = true
+                self.status = .error(self.text(.appBackendNotRunning))
+            }
+        }
         Task { @MainActor [weak self] in
             guard let self else { return }
             do {
                 let snapshot = try await backend.start(params: Self.initializeParams())
                 apply(snapshot)
             } catch {
+                guard !hasBackendConnectionFailed, !isStoppingBackend else { return }
                 status = .error(error.localizedDescription)
             }
         }
@@ -486,7 +496,7 @@ final class AppModel: ObservableObject {
     func sendUpdateCommand(_ method: String) { command(method) }
 
     private func apply(_ snapshot: BackendAppSnapshot) {
-        guard !isStoppingBackend else { return }
+        guard !isStoppingBackend, !hasBackendConnectionFailed else { return }
         guard snapshot.protocolVersion == BackendProtocolContract.protocolVersion else {
             status = .error(text(.appProtocolMismatch))
             return
@@ -537,10 +547,11 @@ final class AppModel: ObservableObject {
 
     private func command(_ method: String) {
         Task { @MainActor [weak self] in
-            guard let self else { return }
+            guard let self, !isStoppingBackend, !hasBackendConnectionFailed else { return }
             do {
                 try await backend.send(method: method)
             } catch {
+                guard !hasBackendConnectionFailed, !isStoppingBackend else { return }
                 status = .error(error.localizedDescription)
             }
         }
@@ -548,10 +559,11 @@ final class AppModel: ObservableObject {
 
     private func command<Params: Encodable & Sendable>(_ method: String, _ params: Params) {
         Task { @MainActor [weak self] in
-            guard let self else { return }
+            guard let self, !isStoppingBackend, !hasBackendConnectionFailed else { return }
             do {
                 try await backend.send(method: method, params: params)
             } catch {
+                guard !hasBackendConnectionFailed, !isStoppingBackend else { return }
                 status = .error(error.localizedDescription)
             }
         }

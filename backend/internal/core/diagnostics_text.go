@@ -1,6 +1,8 @@
 package core
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -9,6 +11,21 @@ import (
 )
 
 const diagnosticTextMaxBytes = 4 * 1024
+
+// External error messages may contain user content. Persist a fixed class;
+// callers can keep the full error in memory for the requested operation.
+func diagnosticErrorClass(err error) string {
+	switch {
+	case errors.Is(err, context.Canceled):
+		return "cancelled"
+	case errors.Is(err, context.DeadlineExceeded):
+		return "timeout"
+	case errors.Is(err, errors.ErrUnsupported):
+		return "unsupported"
+	default:
+		return "failure"
+	}
+}
 
 var diagnosticRedactions = []struct {
 	pattern     *regexp.Regexp

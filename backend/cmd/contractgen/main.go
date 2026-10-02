@@ -155,7 +155,7 @@ func generateSwift(keys []string, contract core.PresentationContract) []byte {
 	}
 	result.WriteString("}\n\n")
 	for _, value := range []any{
-		core.PresentationTokens{}, core.AvailableActions{}, core.StatusPresentation{}, core.PlatformPresentation{}, core.PresentationContract{},
+		core.PresentationTokens{}, core.AvailableActions{}, core.StatusPresentation{}, core.PlatformPresentation{}, core.PresentationContract{}, core.ShutdownResult{},
 	} {
 		writeSwiftStruct(&result, reflect.TypeOf(value))
 	}
@@ -282,7 +282,7 @@ func generateCSharp(keys []string, contract core.PresentationContract) []byte {
 	}
 	result.WriteString("}\n\n")
 	for _, value := range []any{
-		core.PresentationTokens{}, core.AvailableActions{}, core.StatusPresentation{}, core.PlatformPresentation{}, core.PresentationContract{},
+		core.PresentationTokens{}, core.AvailableActions{}, core.StatusPresentation{}, core.PlatformPresentation{}, core.PresentationContract{}, core.ShutdownResult{},
 	} {
 		writeCSharpClass(&result, reflect.TypeOf(value))
 	}

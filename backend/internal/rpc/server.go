@@ -363,7 +363,7 @@ func (s *Server) dispatch(incoming request) (any, error) {
 		if err := c.Shutdown(); err != nil {
 			return nil, err
 		}
-		return map[string]bool{"shutdown": true}, nil
+		return core.ShutdownResult{Shutdown: true}, nil
 	default:
 		return nil, fmt.Errorf("未知方法：%s", incoming.Method)
 	}

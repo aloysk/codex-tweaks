@@ -16,5 +16,6 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="../CodexTweaks.Windows/Services/FrontendDiagnostics.cs" Link="FrontendDiagnostics.cs" />
+    <Compile Include="../CodexTweaks.Windows/Generated/PresentationContract.g.cs" Link="PresentationContract.g.cs" />
   </ItemGroup>
 </Project>

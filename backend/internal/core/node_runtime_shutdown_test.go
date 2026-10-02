@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -38,5 +39,26 @@ func TestNodeStopAllUsesOneBudgetForEveryOwnedProcess(t *testing.T) {
 	}
 	if len(supervisor.RunningPackageIDs()) != 0 {
 		t.Fatal("stopped processes still published as running")
+	}
+}
+
+func TestNodeStartFailureBodyIsNotPersisted(t *testing.T) {
+	const canary = "a private package callback sentence without credential syntax"
+	logger, err := NewLogger(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	supervisor := NewNodeRuntimeSupervisor(nil, nil, logger)
+	supervisor.starting["fixture"] = nodeRuntimeStart{AuthorizationID: "authorized-fixture"}
+	supervisor.recordStartFailure("fixture", "authorized-fixture", canary)
+	if supervisor.failures["fixture"].Message != canary {
+		t.Fatal("in-memory failure detail was lost")
+	}
+	preview, err := logger.ReadPreviewNewestFirst()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(preview, canary) {
+		t.Fatal("external callback body was persisted")
 	}
 }

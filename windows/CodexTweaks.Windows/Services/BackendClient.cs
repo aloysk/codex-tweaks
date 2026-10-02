@@ -81,7 +81,14 @@ internal sealed class BackendClient : IAsyncDisposable
         }
         catch
         {
-            await DisposeAsync();
+            try
+            {
+                await DisposeAsync();
+            }
+            catch (Exception exception)
+            {
+                App.LogException("Failed startup cleanup was not confirmed", exception);
+            }
             throw;
         }
     }
@@ -303,11 +310,14 @@ internal sealed class BackendClient : IAsyncDisposable
         _stopping = true;
         var startedAt = Stopwatch.GetTimestamp();
         var grace = TimeSpan.FromSeconds(BackendProtocolContract.ShutdownGraceSeconds);
+        var cleanupConfirmed = false;
+        var forced = false;
         try
         {
             if (!process.HasExited)
             {
-                await RequestAsync<JsonElement>("shutdown", null, grace);
+                var result = await RequestAsync<ShutdownResult>("shutdown", null, grace);
+                cleanupConfirmed = result.Shutdown;
             }
         }
         catch (Exception exception)
@@ -332,6 +342,7 @@ internal sealed class BackendClient : IAsyncDisposable
         FailPending(new InvalidOperationException(PresentationFallback.Text(PresentationTextKey.AppBackendNotRunning)));
         if (!process.HasExited)
         {
+            forced = true;
             // The official application may have been launched by this sidecar;
             // terminating a descendant tree would close user-owned work.
             try
@@ -353,7 +364,12 @@ internal sealed class BackendClient : IAsyncDisposable
         {
             App.LogException("Backend output drain was not confirmed", exception);
         }
+        var exitedCleanly = process.HasExited && process.ExitCode == 0;
         process.Dispose();
         _writeLock.Dispose();
+        if (!cleanupConfirmed || !exitedCleanly || forced)
+        {
+            throw new InvalidOperationException(PresentationFallback.Text(PresentationTextKey.AppBackendShutdownIncomplete));
+        }
     }
 }

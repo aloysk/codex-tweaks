@@ -258,6 +258,8 @@ enum PresentationTextKey: String, CaseIterable, Sendable {
     case remoteSubtitle = "remote.subtitle"
     case remoteTitle = "remote.title"
     case remoteValidationDetail = "remote.validationDetail"
+    case runtimeEnhancementUnsupported = "runtime.enhancementUnsupported"
+    case runtimeEnhancementUnsupportedTitle = "runtime.enhancementUnsupportedTitle"
     case selectorBranch = "selector.branch"
     case selectorBranchDefault = "selector.branchDefault"
     case selectorBranchValue = "selector.branchValue"
@@ -401,6 +403,10 @@ struct BackendPresentationContract: Codable, Equatable, Sendable {
     let platform: BackendPlatformPresentation
 }
 
+struct BackendShutdownResult: Codable, Equatable, Sendable {
+    let shutdown: Bool
+}
+
 enum GeneratedPresentationDefaults {
     static let text: [PresentationTextKey: String] = [
         .appBackendDateMalformed: "Could not parse the date returned by the Go backend: {value}",
@@ -409,7 +415,7 @@ enum GeneratedPresentationDefaults {
         .appBackendNotRunning: "The Go backend is not running.",
         .appBackendRequestCreateFailed: "Could not create the Go backend request.",
         .appBackendRequestFailed: "The Go backend request failed.",
-        .appBackendShutdownIncomplete: "Page cleanup has not been confirmed. Check the recovery status.",
+        .appBackendShutdownIncomplete: "Page cleanup has not been confirmed. Companion will exit; save your work, normally exit the official Codex app, then reopen it from its official entry point.",
         .appBackendTerminated: "The Go backend exited with status {status}.",
         .appBackendTimedOut: "The Go backend response timed out.",
         .appName: "Codex Tweaks Companion",
@@ -485,7 +491,7 @@ enum GeneratedPresentationDefaults {
         .overviewRestartAndConnect: "Start enhanced mode",
         .overviewRestartCodexUI: "Restart the Codex interface",
         .overviewRestartCodexUIDetail: "Save your work and exit the official Codex app normally, then reopen it.",
-        .overviewRestartDetail: "Save your work and exit Codex normally, then retry. Enhanced mode opens a local debug listener.",
+        .overviewRestartDetail: "Ownership of the official Codex debugging listener has not been verified on this platform. Page enhancement is unavailable; normal Codex launch and local settings remain available.",
         .overviewSubtitle: "Connection status, injection controls, and common actions in one place.",
         .overviewTitle: "Manage local interface enhancements for Codex",
         .overviewViewLogs: "View logs",
@@ -647,6 +653,8 @@ enum GeneratedPresentationDefaults {
         .remoteSubtitle: "The app resolves the remote reference, pins an exact commit, validates the package in a temporary directory, and then saves immutable source.",
         .remoteTitle: "Install package from Git",
         .remoteValidationDetail: "Installation validates package.json, the API version, SemVer, entry points, package dependencies, and the npm lockfile. New packages remain disabled by default. When Node.js is available, locked dependencies are downloaded and the package is built, but it is not enabled automatically.",
+        .runtimeEnhancementUnsupported: "Ownership of the official Codex debugging listener has not been verified on this platform. Page enhancement is unavailable; normal Codex launch and local settings remain available.",
+        .runtimeEnhancementUnsupportedTitle: "Page enhancement unavailable",
         .selectorBranch: "Specific branch",
         .selectorBranchDefault: "main",
         .selectorBranchValue: "Branch name",

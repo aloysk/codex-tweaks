@@ -111,18 +111,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         terminationRequested = true
         Task { @MainActor [weak self] in
             let model = AppModel.shared
-            var allowExit = await model.stopBackend()
-            if !allowExit {
+            let cleanupConfirmed = await model.stopBackend()
+            if !cleanupConfirmed {
                 let alert = NSAlert()
                 alert.alertStyle = .warning
                 alert.messageText = model.text(.statusRecoveryPendingTitle)
                 alert.informativeText = model.text(.appBackendShutdownIncomplete)
                 alert.addButton(withTitle: model.text(.menuQuit))
-                alert.addButton(withTitle: model.text(.commonCancel))
-                allowExit = alert.runModal() == .alertFirstButtonReturn
+                alert.runModal()
             }
             self?.terminationRequested = false
-            sender.reply(toApplicationShouldTerminate: allowExit)
+            sender.reply(toApplicationShouldTerminate: true)
         }
         return .terminateLater
     }

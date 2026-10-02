@@ -79,6 +79,77 @@ final class BackendClientLifecycleTests: XCTestCase {
         }
     }
 
+    func testStopBeforeLaunchSucceedsWithoutStartingProcess() async throws {
+        let client = makeClient()
+        try await client.stop()
+        try await client.stop()
+        XCTAssertNil(client.ownedProcessIdentifier)
+        XCTAssertEqual(client.pendingRequestCount, 0)
+    }
+
+    func testIdleUnexpectedExitReportsConnectionLossAndRetainsUnconfirmedCleanup() async throws {
+        let client = makeClient()
+        let lost = expectation(description: "Idle transport loss reaches the frontend")
+        lost.assertForOverFulfill = true
+        client.failureHandler = { failure in
+            switch failure {
+            case .connectionLost: lost.fulfill()
+            }
+        }
+        try client.launchIfNeeded()
+        let _: BackendAccepted = try await client.request(method: "ping", params: Params())
+        XCTAssertEqual(client.pendingRequestCount, 0)
+        let ownedPID = try XCTUnwrap(client.ownedProcessIdentifier)
+        // Only terminate the injected fake shell after all requests finish.
+        // The client must observe this without a request continuation to fail.
+        XCTAssertEqual(Darwin.kill(ownedPID, SIGTERM), 0)
+        await fulfillment(of: [lost], timeout: 2)
+        try await waitForProcessRelease(client)
+        XCTAssertEqual(client.pendingRequestCount, 0)
+        for _ in 0..<2 {
+            do {
+                try await client.stop()
+                XCTFail("An exited sidecar is not evidence of confirmed cleanup")
+            } catch BackendClientError.shutdownIncomplete {}
+        }
+    }
+
+    func testIdleUnexpectedEOFReportsConnectionLossWhileOwnedProcessIsStillRunning() async throws {
+        let client = makeClient(script: "exec 1>&-; while IFS= read -r _; do :; done")
+        let lost = expectation(description: "Idle stdout EOF reaches the frontend")
+        lost.assertForOverFulfill = true
+        client.failureHandler = { failure in
+            switch failure {
+            case .connectionLost: lost.fulfill()
+            }
+        }
+        try client.launchIfNeeded()
+        await fulfillment(of: [lost], timeout: 2)
+        XCTAssertEqual(client.pendingRequestCount, 0)
+        let ownedPID = try XCTUnwrap(client.ownedProcessIdentifier)
+        XCTAssertEqual(Darwin.kill(ownedPID, 0), 0)
+        for _ in 0..<2 {
+            do {
+                try await client.stop()
+                XCTFail("EOF must not count as confirmed cleanup")
+            } catch BackendClientError.shutdownIncomplete {}
+        }
+        XCTAssertNil(client.ownedProcessIdentifier)
+    }
+
+    func testCleanShutdownDoesNotReportUnexpectedConnectionLoss() async throws {
+        let client = makeClient()
+        let lost = expectation(description: "Expected shutdown is not transport failure")
+        lost.isInverted = true
+        client.failureHandler = { _ in lost.fulfill() }
+        try client.launchIfNeeded()
+        let _: BackendAccepted = try await client.request(method: "ping", params: Params())
+        try await client.stop()
+        try await client.stop()
+        await fulfillment(of: [lost], timeout: 0.05)
+        XCTAssertNil(client.ownedProcessIdentifier)
+    }
+
     func testBlockedPipeAndUnresponsiveShutdownAreBoundedAndOnlyStopOwnedProcess() async throws {
         let stubborn = makeClient(script: #"trap '' TERM; while :; do :; done"#,
                                   requestTimeout: 0.15, shutdownGrace: 0.6)
@@ -168,6 +239,14 @@ final class BackendClientLifecycleTests: XCTestCase {
             try await Task.sleep(nanoseconds: 1_000_000)
         }
         XCTAssertEqual(client.pendingRequestCount, 1)
+    }
+
+    private func waitForProcessRelease(_ client: BackendClient) async throws {
+        let deadline = ProcessInfo.processInfo.systemUptime + 2
+        while client.ownedProcessIdentifier != nil && ProcessInfo.processInfo.systemUptime < deadline {
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+        XCTAssertNil(client.ownedProcessIdentifier)
     }
 
     private struct Params: Encodable, Sendable {}

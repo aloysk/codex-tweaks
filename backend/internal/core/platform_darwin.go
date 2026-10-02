@@ -53,13 +53,7 @@ func (p *darwinPlatform) ActivateCodex(ctx context.Context) error {
 
 func (p *darwinPlatform) LaunchCodex(ctx context.Context, options CodexLaunchOptions) error {
 	if options.Mode == CodexLaunchEnhanced {
-		running, err := p.IsCodexRunning(ctx)
-		if err != nil {
-			return err
-		}
-		if running {
-			return ErrManualCodexExitRequired
-		}
+		return errors.Join(errors.ErrUnsupported, ErrCodexIdentityUnverified)
 	}
 	launchArguments := codexLaunchArguments(options, runtime.GOOS)
 	arguments := []string{"-b", CodexBundleIdentifier}
@@ -81,6 +75,9 @@ func (p *darwinPlatform) LaunchCodex(ctx context.Context, options CodexLaunchOpt
 }
 
 func (p *darwinPlatform) RestartCodex(ctx context.Context, options CodexLaunchOptions) error {
+	if options.Mode == CodexLaunchEnhanced {
+		return errors.Join(errors.ErrUnsupported, ErrCodexIdentityUnverified)
+	}
 	running, err := p.IsCodexRunning(ctx)
 	if err != nil {
 		return err

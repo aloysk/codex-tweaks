@@ -4,6 +4,7 @@ package core
 
 import (
 	"context"
+	"errors"
 	"testing"
 )
 
@@ -74,16 +75,16 @@ func TestDarwinPlatformTreatsEmptyLaunchServicesLookupAsNotRunning(t *testing.T)
 	}
 }
 
-func TestDarwinPlatformEnhancedLaunchRequiresManualExit(t *testing.T) {
+func TestDarwinPlatformEnhancedLaunchIsUnsupportedWithoutProcessEffects(t *testing.T) {
 	calls := []string{}
 	platform := NewPlatform(commandRunnerFunc(func(_ context.Context, executable string, _ []string, _ string, _ []string) (CommandResult, error) {
 		calls = append(calls, executable)
 		return CommandResult{Output: "official bundle is running"}, nil
 	}))
-	if err := platform.RestartCodex(context.Background(), CodexLaunchOptions{Mode: CodexLaunchEnhanced}); err != ErrManualCodexExitRequired {
+	if err := platform.RestartCodex(context.Background(), CodexLaunchOptions{Mode: CodexLaunchEnhanced}); !errors.Is(err, errors.ErrUnsupported) {
 		t.Fatalf("err=%v", err)
 	}
-	if len(calls) != 1 || calls[0] != "/usr/bin/lsappinfo" {
+	if len(calls) != 0 {
 		t.Fatalf("restart touched application: %v", calls)
 	}
 	observation, err := platform.ObserveCodex(context.Background())

@@ -27,12 +27,21 @@ enum BackendClientError: LocalizedError {
     }
 }
 
+enum BackendConnectionFailure: Sendable {
+    case connectionLost
+}
+
 final class BackendClient: @unchecked Sendable {
     static let shared = BackendClient()
 
     var stateHandler: (@MainActor @Sendable (BackendAppSnapshot) -> Void)? {
         get { queue.sync { storedStateHandler } }
         set { queue.sync { storedStateHandler = newValue } }
+    }
+
+    var failureHandler: (@MainActor @Sendable (BackendConnectionFailure) -> Void)? {
+        get { queue.sync { storedFailureHandler } }
+        set { queue.sync { storedFailureHandler = newValue } }
     }
 
     var pendingRequestCount: Int { queue.sync { pending.count } }
@@ -50,6 +59,10 @@ final class BackendClient: @unchecked Sendable {
     private let shutdownGrace: TimeInterval
     private let diagnostic: @Sendable (String, UInt64) -> Void
     private var storedStateHandler: (@MainActor @Sendable (BackendAppSnapshot) -> Void)?
+    private var storedFailureHandler: (@MainActor @Sendable (BackendConnectionFailure) -> Void)?
+    private var connectionFailure: BackendConnectionFailure?
+    private var hasLaunched = false
+    private var shutdownConfirmed = false
     private var process: Process?
     private var inputChannel: DispatchIO?
     private var outputHandle: FileHandle?
@@ -152,7 +165,7 @@ final class BackendClient: @unchecked Sendable {
         id: Int64, method: String, params: Params, timeout: TimeInterval,
         complete: @escaping @Sendable (Swift.Result<Data, Error>) -> Void
     ) {
-        guard let inputChannel, process?.isRunning == true, !outputEnded,
+        guard let inputChannel, process?.isRunning == true, !outputEnded, connectionFailure == nil,
               !stopping || method == "shutdown" else {
             complete(.failure(BackendClientError.notRunning))
             return
@@ -183,6 +196,7 @@ final class BackendClient: @unchecked Sendable {
         inputChannel.write(offset: 0, data: payload, queue: queue) { [weak self] _, _, error in
             guard let self, error != 0, pending[id] != nil else { return }
             diagnostic("stdin_write_failed", 0)
+            recordConnectionFailure()
             failPending(BackendClientError.transportFailure)
         }
     }
@@ -212,12 +226,18 @@ final class BackendClient: @unchecked Sendable {
     }
 
     private func stopOwnedProcess(_ owned: Process?) async throws {
-        guard let owned else { return }
+        guard let owned else {
+            if queue.sync(execute: { hasLaunched && !shutdownConfirmed }) {
+                diagnostic("shutdown_unconfirmed", 0)
+                throw BackendClientError.shutdownIncomplete
+            }
+            return
+        }
         let deadline = ProcessInfo.processInfo.systemUptime + shutdownGrace
         let forceReserve = min(0.5, shutdownGrace / 2)
         var cleanupConfirmed = false
         do {
-            let result: BackendAccepted = try await request(
+            let result: BackendShutdownResult = try await request(
                 method: "shutdown", params: EmptyParams(), timeout: shutdownGrace - forceReserve)
             cleanupConfirmed = result.shutdown == true
         } catch {
@@ -237,10 +257,12 @@ final class BackendClient: @unchecked Sendable {
             await waitForExit(owned, until: deadline)
         }
         let exitedCleanly = !owned.isRunning && owned.terminationStatus == 0
+        let confirmed = cleanupConfirmed && exitedCleanly && !forced
         queue.sync {
+            shutdownConfirmed = confirmed
             if process === owned { closeProcess() }
         }
-        if !cleanupConfirmed || !exitedCleanly || forced {
+        if !confirmed {
             diagnostic("shutdown_unconfirmed", 0)
             throw BackendClientError.shutdownIncomplete
         }
@@ -274,7 +296,7 @@ final class BackendClient: @unchecked Sendable {
 
     func launchIfNeeded() throws {
         try queue.sync {
-            guard !stopping else { throw BackendClientError.notRunning }
+            guard !stopping, connectionFailure == nil else { throw BackendClientError.notRunning }
             guard process?.isRunning != true else { return }
             guard let executableURL = executableOverride ?? Self.backendExecutableURL() else {
                 throw BackendClientError.executableNotFound
@@ -291,10 +313,11 @@ final class BackendClient: @unchecked Sendable {
             owned.standardError = stderr
             owned.terminationHandler = { [weak self] terminated in
                 self?.queue.async {
-                    guard let self, process === terminated else { return }
+                    guard let self, self.process === terminated else { return }
+                    self.recordConnectionFailure()
                     // stdout may still contain the final shutdown response.
                     // Its EOF handler drains that response before failing requests.
-                    if outputEnded { closeProcess() }
+                    if self.outputEnded { self.closeProcess() }
                 }
             }
             do {
@@ -304,6 +327,8 @@ final class BackendClient: @unchecked Sendable {
                 throw BackendClientError.transportFailure
             }
             process = owned
+            hasLaunched = true
+            shutdownConfirmed = false
             outputEnded = false
             stderrCounter = counter
             let writer = input.fileHandleForWriting
@@ -318,15 +343,16 @@ final class BackendClient: @unchecked Sendable {
                     let data = try handle.read(upToCount: 64 * 1024) ?? Data()
                     if data.isEmpty { handle.readabilityHandler = nil }
                     self?.queue.async {
-                        guard let self, let owned, process === owned else { return }
-                        consumeOutput(data)
+                        guard let self, let owned, self.process === owned else { return }
+                        self.consumeOutput(data)
                     }
                 } catch {
                     self?.queue.async {
-                        guard let self, let owned, process === owned else { return }
-                        diagnostic("stdout_read_failed", 0)
-                        outputEnded = true
-                        failPending(BackendClientError.transportFailure)
+                        guard let self, let owned, self.process === owned else { return }
+                        self.diagnostic("stdout_read_failed", 0)
+                        self.outputEnded = true
+                        self.recordConnectionFailure()
+                        self.failPending(BackendClientError.transportFailure)
                     }
                 }
             }
@@ -347,6 +373,7 @@ final class BackendClient: @unchecked Sendable {
         guard !data.isEmpty else {
             outputEnded = true
             outputHandle?.readabilityHandler = nil
+            recordConnectionFailure()
             failPending(outputBuffer.isEmpty ? BackendClientError.transportFailure : BackendClientError.malformedResponse)
             if process?.isRunning == false { closeProcess() }
             return
@@ -359,6 +386,7 @@ final class BackendClient: @unchecked Sendable {
                 failPending(BackendClientError.malformedResponse)
                 outputEnded = true
                 outputHandle?.readabilityHandler = nil
+                recordConnectionFailure()
                 return
             }
             if !line.isEmpty { handleLine(line) }
@@ -367,19 +395,30 @@ final class BackendClient: @unchecked Sendable {
             outputBuffer.removeAll(keepingCapacity: false)
             outputEnded = true
             outputHandle?.readabilityHandler = nil
+            recordConnectionFailure()
             failPending(BackendClientError.malformedResponse)
         }
     }
 
     private func handleLine(_ data: Data) {
         guard let header = try? BackendJSON.makeDecoder().decode(BackendMessageHeader.self, from: data) else { return }
-        if header.event == "state", !stopping,
+        if header.event == "state", !stopping, connectionFailure == nil,
            let message = try? BackendJSON.makeDecoder().decode(BackendStateEvent.self, from: data) {
             let handler = storedStateHandler
             Task { @MainActor in handler?(message.data) }
             return
         }
         if let id = header.id { finishRequest(id, .success(data)) }
+    }
+
+    private func recordConnectionFailure() {
+        guard !stopping, connectionFailure == nil else { return }
+        // Only transport facts cross this callback. Cleanup confirmation is
+        // retained separately even after the Process and handles are released.
+        connectionFailure = .connectionLost
+        diagnostic("connection_lost", 0)
+        let handler = storedFailureHandler
+        Task { @MainActor in handler?(.connectionLost) }
     }
 
     private func closeProcess() {

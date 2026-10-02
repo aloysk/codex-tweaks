@@ -413,7 +413,7 @@ func (s *rendererBridgeSession) sendBridgeResponse(executionContextID int, respo
 		"expression": expression, "contextId": executionContextID,
 		"returnByValue": true, "awaitPromise": false, "userGesture": false,
 	}); err != nil && !errors.Is(err, errRendererBridgeSessionClosed) && !errors.Is(err, context.Canceled) && s.logger != nil {
-		s.logger.Error("Node 调用结果无法返回 Codex 页面：" + err.Error())
+		s.logger.Error("Node 调用结果无法返回 Codex 页面：class=" + diagnosticErrorClass(err))
 	}
 }
 
@@ -493,7 +493,7 @@ func (s *CDPService) rendererBridgeForTargetLocked(
 	settingsAdapter, err := existing.ensureSettingsAdapter(adapterContext, payload)
 	if err != nil {
 		if s.logger != nil && existing.settingsAdapterLoggedError != err.Error() {
-			s.logger.Error("ui.settingsSections@1 无法适配当前 Codex：" + err.Error())
+			s.logger.Error("ui.settingsSections@1 无法适配当前 Codex：class=" + diagnosticErrorClass(err))
 		}
 		existing.settingsAdapterLoggedError = err.Error()
 		settingsAdapter = nil

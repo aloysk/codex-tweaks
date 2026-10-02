@@ -246,6 +246,13 @@ func (c *Controller) cancelNodeActivity() {
 }
 
 func (c *Controller) observeRecoveryListener(ctx context.Context) {
+	c.mu.Lock()
+	if c.runtime.Target == nil && len(c.runtime.Recovery.Targets) == 0 {
+		c.runtime.Recovery.DebugListener = "unknown"
+		c.mu.Unlock()
+		return
+	}
+	c.mu.Unlock()
 	observation, err := c.platform.ObserveCodex(ctx)
 	listener := "unknown"
 	if err == nil && observation.ListenerObserved {
@@ -288,12 +295,21 @@ func (c *Controller) stopRuntimeLocked(ctx context.Context) error {
 			recovery.PageCleanup = "notNeeded"
 		}
 	}
-	observation, observationError := c.platform.ObserveCodex(ctx)
-	if observationError == nil && observation.ListenerObserved {
-		if observation.ListenerPresent {
-			recovery.DebugListener = "open"
-		} else {
-			recovery.DebugListener = "closed"
+	if err := lockWithContext(ctx, &c.mu); err != nil {
+		return errors.Join(cleanupError, err)
+	}
+	hasTarget := c.runtime.Target != nil || len(c.runtime.Recovery.Targets) > 0 || result.TargetCount > 0
+	c.mu.Unlock()
+	// An idle companion has no debug listener of its own to verify. Starting an
+	// unrelated platform probe here can exhaust the entire shutdown budget.
+	if hasTarget {
+		observation, observationError := c.platform.ObserveCodex(ctx)
+		if observationError == nil && observation.ListenerObserved {
+			if observation.ListenerPresent {
+				recovery.DebugListener = "open"
+			} else {
+				recovery.DebugListener = "closed"
+			}
 		}
 	}
 	var nodeError error
@@ -435,7 +451,7 @@ func (c *Controller) startPackageBuild(pkg Package, installDependencies, allowCo
 		}
 		c.mu.Unlock()
 		if err != nil {
-			c.logger.Error("功能包 " + pkg.DisplayName() + " 编译失败：" + err.Error())
+			c.logger.Error("功能包 " + pkg.DisplayName() + " 编译失败：class=" + diagnosticErrorClass(err))
 			c.emit()
 			return
 		}
