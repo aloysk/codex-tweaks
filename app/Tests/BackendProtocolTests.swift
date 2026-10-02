@@ -44,6 +44,8 @@ final class BackendProtocolTests: XCTestCase {
     func testCompleteSnapshotAndPackageDecodeAcrossTheGoBoundary() throws {
         let presentationData = try JSONEncoder().encode(GeneratedPresentationDefaults.contract)
         let presentationJSON = try XCTUnwrap(String(data: presentationData, encoding: .utf8))
+        let appearanceData = try JSONEncoder().encode(AppearanceTestFixture.snapshot())
+        let appearanceJSON = try XCTUnwrap(String(data: appearanceData, encoding: .utf8))
         let package = try decode(
             TweakPackage.self,
             """
@@ -117,6 +119,7 @@ final class BackendProtocolTests: XCTestCase {
               "protocolVersion": \(BackendProtocolContract.protocolVersion),
               "presentation": \(presentationJSON),
               "status": {"kind": "connected", "targetCount": 1},
+              "appearance": \(appearanceJSON),
               "enabled": true,
               "disableGPUAcceleration": false,
               "developerMode": false,
@@ -164,6 +167,7 @@ final class BackendProtocolTests: XCTestCase {
         XCTAssertFalse(snapshot.disableGPUAcceleration)
         XCTAssertEqual(snapshot.presentation.version, 2)
         XCTAssertEqual(snapshot.status.targetCount, 1)
+        XCTAssertEqual(snapshot.appearance.saved, GeneratedAppearanceDefaults.settings)
         XCTAssertFalse(snapshot.developerAllowUnknownNode)
         XCTAssertEqual(snapshot.update.channel, .stable)
         XCTAssertEqual(snapshot.update.packageChannel, .stable)

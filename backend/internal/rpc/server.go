@@ -35,14 +35,19 @@ type event struct {
 }
 
 type Server struct {
-	reader       io.Reader
-	writer       io.Writer
-	writeMu      sync.Mutex
-	writeError   error
-	abortOnce    sync.Once
-	controller   *core.Controller
-	dependencies core.ControllerDependencies
+	reader            io.Reader
+	writer            io.Writer
+	writeMu           sync.Mutex
+	writeError        error
+	abortOnce         sync.Once
+	controller        *core.Controller
+	dependencies      core.ControllerDependencies
+	appearanceMu      sync.Mutex
+	appearance        *appearanceOperation
+	appearanceWorkers sync.WaitGroup
 }
+
+type appearanceOperation struct{ cancel context.CancelFunc }
 
 func NewServer(reader io.Reader, writer io.Writer) *Server {
 	return &Server{reader: reader, writer: writer}
@@ -60,9 +65,12 @@ func NewServerWithDependencies(
 
 func (s *Server) Serve() (serveError error) {
 	defer func() {
+		s.cancelAppearance()
 		if s.controller != nil {
 			serveError = errors.Join(serveError, s.controller.Shutdown())
 		}
+		s.appearanceWorkers.Wait()
+		serveError = errors.Join(serveError, s.outputError())
 	}()
 	scanner := bufio.NewScanner(s.reader)
 	scanner.Buffer(make([]byte, 64*1024), 4*1024*1024)
@@ -83,15 +91,23 @@ func (s *Server) Serve() (serveError error) {
 			}
 			continue
 		}
-		result, err := s.dispatch(incoming)
-		if err != nil {
-			if writeErr := s.write(response{ID: incoming.ID, Error: &rpcError{Code: requestErrorCode(err), Message: err.Error()}}); writeErr != nil {
-				return writeErr
-			}
-		} else {
-			if err := s.write(response{ID: incoming.ID, Result: result}); err != nil {
+		if incoming.Method == "appearance.preview" || incoming.Method == "appearance.apply" || incoming.Method == "appearance.restoreNative" {
+			if err := s.startAppearance(incoming); err != nil {
 				return err
 			}
+			continue
+		}
+		if incoming.Method == "appearance.cancelPreview" || incoming.Method == "shutdown" {
+			s.cancelAppearance()
+		}
+		result, err := s.dispatch(incoming)
+		if incoming.Method == "shutdown" {
+			// Drain the canceled appearance response before the client closes
+			// its pipe after receiving the shutdown acknowledgement.
+			s.appearanceWorkers.Wait()
+		}
+		if err := s.respond(incoming.ID, result, err); err != nil {
+			return err
 		}
 		if incoming.Method == "shutdown" {
 			return nil
@@ -104,6 +120,72 @@ func (s *Server) Serve() (serveError error) {
 		return err
 	}
 	return nil
+}
+
+func (s *Server) respond(id int64, result any, err error) error {
+	if err != nil {
+		return s.write(response{ID: id, Error: &rpcError{Code: requestErrorCode(err), Message: err.Error()}})
+	}
+	return s.write(response{ID: id, Result: result})
+}
+
+// Preview/apply/restore run off the scanner loop, so cancel and shutdown remain
+// reachable while the renderer is waiting. One pending operation bounds work;
+// its context is reserved synchronously so a subsequent cancel also wins if
+// the worker has not started yet. Initialization and other commands stay ordered.
+func (s *Server) startAppearance(incoming request) error {
+	if s.controller == nil {
+		return s.respond(incoming.ID, nil, errors.New("请先调用 initialize"))
+	}
+	s.appearanceMu.Lock()
+	if s.appearance != nil {
+		s.appearanceMu.Unlock()
+		return s.respond(incoming.ID, nil, core.ErrAppearanceUnavailable)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	operation := &appearanceOperation{cancel: cancel}
+	s.appearance = operation
+	s.appearanceWorkers.Add(1)
+	s.appearanceMu.Unlock()
+	go func() {
+		defer s.appearanceWorkers.Done()
+		defer cancel()
+		result, err := s.dispatchAppearance(ctx, incoming)
+		s.appearanceMu.Lock()
+		// Release the slot as part of delivering the response. A caller that
+		// immediately sends its next command waits for this short write rather
+		// than racing the old slot; blocked output cannot grow a worker queue.
+		_ = s.respond(incoming.ID, result, err) // write retains failures and wakes the scanner.
+		if s.appearance == operation {
+			s.appearance = nil
+		}
+		s.appearanceMu.Unlock()
+	}()
+	return nil
+}
+
+func (s *Server) cancelAppearance() {
+	s.appearanceMu.Lock()
+	defer s.appearanceMu.Unlock()
+	if s.appearance != nil {
+		s.appearance.cancel()
+	}
+}
+
+func (s *Server) dispatchAppearance(ctx context.Context, incoming request) (any, error) {
+	if incoming.Method == "appearance.restoreNative" {
+		return s.controller.RestoreNativeAppearanceContext(ctx)
+	}
+	var params struct {
+		Settings core.AppearanceSettings `json:"settings"`
+	}
+	if err := decodeParams(incoming.Params, &params); err != nil {
+		return nil, err
+	}
+	if incoming.Method == "appearance.preview" {
+		return s.controller.PreviewAppearanceContext(ctx, params.Settings)
+	}
+	return s.controller.ApplyAppearanceContext(ctx, params.Settings)
 }
 
 func requestErrorCode(err error) string {
@@ -148,6 +230,18 @@ func (s *Server) dispatch(incoming request) (any, error) {
 	switch incoming.Method {
 	case "getState":
 		return c.Snapshot(), nil
+	case "appearance.preview", "appearance.apply", "appearance.restoreNative":
+		return s.dispatchAppearance(context.Background(), incoming)
+	case "appearance.cancelPreview":
+		return c.CancelAppearancePreview()
+	case "appearance.importImage":
+		var params struct {
+			Path string `json:"path"`
+		}
+		if err := decodeParams(incoming.Params, &params); err != nil {
+			return nil, err
+		}
+		return c.ImportAppearanceImage(params.Path)
 	case "setEnabled":
 		var params struct {
 			Enabled bool `json:"enabled"`

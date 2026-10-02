@@ -50,6 +50,9 @@ func cleanupScriptOwned(owner string, epochs ...uint64) string {
       || (!runtime && root && !lease)) return { status: "foreign" };
   // Invalidate before awaiting callbacks, including when injection never returned.
   globalThis[leaseKey] = { instance: owner, epoch, active: false };
+  const appearance = globalThis.__CODEX_COMPANION_APPEARANCE__;
+  if (appearance && appearance.owner !== owner) return { status: "foreign" };
+  if (appearance) appearance.cleanup();
   if (!runtime) {
     if (root) return { status: "cleanupPending" };
     if (binding?.__codexTweaksOwner === owner) delete globalThis["__codexTweaksHostBridge"];
@@ -862,6 +865,8 @@ func injectionScriptOwned(payload Payload, forceGeneration int, bridgeSessionID 
       return true;
     },
     async cleanup({ replacing = false, preserveBinding = false } = {}) {
+      const appearance = globalThis.__CODEX_COMPANION_APPEARANCE__;
+      if (appearance?.owner === owner) appearance.cleanup({ replacing });
       runtime.stopping = true;
       const lease = globalThis["__CODEX_COMPANION_RUNTIME_LEASE__"];
       if (!replacing && lease?.instance === owner && lease.epoch === epoch) lease.active = false;

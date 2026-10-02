@@ -41,15 +41,13 @@ func TestWindowsPlatformLaunchIncludesEveryCDPArgument(t *testing.T) {
 		_ string,
 		_ []string,
 	) (CommandResult, error) {
-		if command == "powershell.exe" && containsString(arguments, codexProcessObservationPowerShell) {
-			return CommandResult{Output: `{"processes":[],"listeners":[]}`}, nil
-		}
 		invokedExecutable = command
 		invokedArguments = append([]string(nil), arguments...)
 		return CommandResult{}, nil
 	})
 	platform := &windowsPlatform{
 		runner:            runner,
+		observeProcesses:  noRunningWindowsObservation,
 		restoreNotifyIcon: func(context.Context, codexNotifyIconTarget) error { return nil },
 	}
 	if err := platform.LaunchCodex(context.Background(), CodexLaunchOptions{Mode: CodexLaunchEnhanced, DisableGPUAcceleration: true}); err != nil {
@@ -74,7 +72,6 @@ func TestWindowsPlatformDiscoversAndActivatesPackagedCodex(t *testing.T) {
 	t.Setenv("ProgramFiles", t.TempDir())
 
 	const appUserModelID = "OpenAI.Codex_2p2nqsd0c76g0!App"
-	var invokedCommand string
 	var activatedID string
 	var activatedArguments string
 	runner := windowsCommandRunnerFunc(func(
@@ -84,18 +81,16 @@ func TestWindowsPlatformDiscoversAndActivatesPackagedCodex(t *testing.T) {
 		_ string,
 		_ []string,
 	) (CommandResult, error) {
-		if command == "powershell.exe" && containsString(arguments, codexProcessObservationPowerShell) {
-			return CommandResult{Output: `{"processes":[],"listeners":[]}`}, nil
-		}
-		invokedCommand = command
-		if command != "powershell.exe" || !containsString(arguments, packagedCodexPowerShell) {
-			t.Fatalf("unexpected discovery command: %q %#v", command, arguments)
-		}
-		return CommandResult{Output: "\ufeff" + appUserModelID + "\r\n"}, nil
+		t.Fatalf("package discovery spawned a subprocess: %q %#v", command, arguments)
+		return CommandResult{}, nil
 	})
 	repaired := make(chan codexNotifyIconTarget, 1)
 	platform := &windowsPlatform{
-		runner: runner,
+		runner:           runner,
+		observeProcesses: noRunningWindowsObservation,
+		registeredPackage: func(context.Context) (windowsRegisteredCodex, error) {
+			return windowsRegisteredCodex{ApplicationID: appUserModelID}, nil
+		},
 		activatePackaged: func(id, arguments string) (uint32, error) {
 			activatedID = id
 			activatedArguments = arguments
@@ -109,8 +104,8 @@ func TestWindowsPlatformDiscoversAndActivatesPackagedCodex(t *testing.T) {
 	if err := platform.LaunchCodex(context.Background(), CodexLaunchOptions{Mode: CodexLaunchEnhanced}); err != nil {
 		t.Fatal(err)
 	}
-	if invokedCommand != "powershell.exe" || activatedID != appUserModelID {
-		t.Fatalf("discovery/activation mismatch: command=%q id=%q", invokedCommand, activatedID)
+	if activatedID != appUserModelID {
+		t.Fatalf("discovery/activation mismatch: id=%q", activatedID)
 	}
 	for _, argument := range CodexDebuggingArguments {
 		if !strings.Contains(activatedArguments, argument) {
@@ -143,14 +138,12 @@ func TestWindowsPlatformSchedulesCodexNotifyIconRepairAfterRestart(t *testing.T)
 		_ string,
 		_ []string,
 	) (CommandResult, error) {
-		if command == "powershell.exe" && containsString(arguments, codexProcessObservationPowerShell) {
-			return CommandResult{Output: `{"processes":[],"listeners":[]}`}, nil
-		}
 		return CommandResult{}, nil
 	})
 	repaired := make(chan codexNotifyIconTarget, 1)
 	platform := &windowsPlatform{
-		runner: runner,
+		runner:           runner,
+		observeProcesses: noRunningWindowsObservation,
 		restoreNotifyIcon: func(_ context.Context, target codexNotifyIconTarget) error {
 			repaired <- target
 			return nil

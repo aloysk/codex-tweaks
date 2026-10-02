@@ -80,6 +80,7 @@ struct BackendAppSnapshot: Codable, Equatable, Sendable {
     let protocolVersion: Int
     let presentation: BackendPresentationContract
     let status: BackendAppStatus
+    let appearance: BackendAppearanceSnapshot
     let enabled: Bool
     let disableGPUAcceleration: Bool
     let developerMode: Bool
@@ -130,4 +131,54 @@ struct BackendInitializeParams: Encodable, Sendable {
 struct BackendAccepted: Decodable, Sendable {
     let accepted: Bool?
     let shutdown: Bool?
+}
+
+struct AppearanceSettingsParameter: Encodable, Sendable {
+    let settings: BackendAppearanceSettings
+}
+
+struct AppearanceImageParameter: Encodable, Sendable {
+    let path: String
+}
+
+// Local form state only: Go validates values and owns saved/preview settings.
+// Incoming snapshots may refresh the baseline without replacing unsent edits.
+struct AppearanceDraft: Equatable {
+    var theme: String
+    var readingLayout: String
+    var backgroundMode: String
+    var solidColor: String
+    var imageAssetId: String?
+    var overlayOpacity: Int
+    private var baseline: BackendAppearanceSettings
+
+    init(settings: BackendAppearanceSettings = GeneratedAppearanceDefaults.settings) {
+        theme = settings.theme
+        readingLayout = settings.readingLayout
+        backgroundMode = settings.backgroundMode
+        solidColor = settings.solidColor
+        imageAssetId = settings.imageAssetId
+        overlayOpacity = settings.overlayOpacity
+        baseline = settings
+    }
+
+    var settings: BackendAppearanceSettings {
+        BackendAppearanceSettings(
+            theme: theme, readingLayout: readingLayout, backgroundMode: backgroundMode,
+            solidColor: solidColor, imageAssetId: imageAssetId, overlayOpacity: overlayOpacity
+        )
+    }
+
+    var hasLocalEdits: Bool { settings != baseline }
+
+    mutating func receive(_ snapshot: BackendAppearanceSnapshot) {
+        let incoming = snapshot.preview ?? snapshot.saved
+        let preserveEdits = hasLocalEdits
+        baseline = incoming
+        if !preserveEdits { self = AppearanceDraft(settings: incoming) }
+    }
+
+    mutating func accept(_ snapshot: BackendAppearanceSnapshot) {
+        self = AppearanceDraft(settings: snapshot.preview ?? snapshot.saved)
+    }
 }

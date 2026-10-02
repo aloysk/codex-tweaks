@@ -1,6 +1,6 @@
 # Companion design direction
 
-The product is a quiet desktop companion for people working in the official Codex app. Its complete settings live in our native control panel; the optional capsule exposes a few useful, trustworthy observations without taking keyboard focus. This file specifies the fork's intended visual direction. It does not claim a new UI has been implemented.
+The product is a quiet desktop companion for people working in the official Codex app. Settings live in our native control panel; the planned optional capsule exposes a few useful observations without taking keyboard focus. The appearance page follows this native design direction; capsule sketches below remain proposals.
 
 ## Composition
 
@@ -17,7 +17,7 @@ Control panel (proposed)                 Capsule (proposed)
 └────────────┴───────────────────────┘
 ```
 
-Page labels and final grouping are governed by the PRD, not this sketch. Existing upstream navigation is still Overview, Packages, Logs and Updates. Add destinations only with working content and keep diagnostics secondary to the user's task.
+Page labels and final grouping are governed by the PRD, not this sketch. Implemented navigation is Overview, Appearance, Packages, Logs and Updates. Add later destinations with their working content and keep diagnostics secondary to the user's task.
 
 ## Reference system and native mapping
 

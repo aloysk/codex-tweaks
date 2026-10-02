@@ -38,17 +38,18 @@ type InitializeParams struct {
 }
 
 type AppConfiguration struct {
-	SchemaVersion          int           `json:"schemaVersion"`
-	Enabled                bool          `json:"enabled"`
-	DisableGPUAcceleration bool          `json:"disableGPUAcceleration"`
-	DeveloperMode          bool          `json:"developerMode"`
-	KnownPackageIDs        *[]string     `json:"knownPackageIDs"`
-	DisabledPackageIDs     []string      `json:"disabledPackageIDs"`
-	Language               AppLanguage   `json:"language"`
-	UpdateChannel          UpdateChannel `json:"updateChannel"`
-	UpdateAutoCheck        bool          `json:"updateAutoCheck"`
-	UpdateLastCheckAt      *CodableTime  `json:"updateLastCheckAt,omitempty"`
-	UpdateSkippedVersions  []string      `json:"updateSkippedVersions"`
+	SchemaVersion          int                `json:"schemaVersion"`
+	Enabled                bool               `json:"enabled"`
+	DisableGPUAcceleration bool               `json:"disableGPUAcceleration"`
+	DeveloperMode          bool               `json:"developerMode"`
+	KnownPackageIDs        *[]string          `json:"knownPackageIDs"`
+	DisabledPackageIDs     []string           `json:"disabledPackageIDs"`
+	Language               AppLanguage        `json:"language"`
+	UpdateChannel          UpdateChannel      `json:"updateChannel"`
+	UpdateAutoCheck        bool               `json:"updateAutoCheck"`
+	UpdateLastCheckAt      *CodableTime       `json:"updateLastCheckAt,omitempty"`
+	UpdateSkippedVersions  []string           `json:"updateSkippedVersions"`
+	Appearance             AppearanceSettings `json:"appearance"`
 }
 
 type PackageView struct {
@@ -139,6 +140,7 @@ type AppSnapshot struct {
 	Presentation               PresentationContract          `json:"presentation"`
 	Status                     AppStatus                     `json:"status"`
 	Runtime                    RuntimeSnapshot               `json:"runtime"`
+	Appearance                 AppearanceSnapshot            `json:"appearance"`
 	Enabled                    bool                          `json:"enabled"`
 	DisableGPUAcceleration     bool                          `json:"disableGPUAcceleration"`
 	DeveloperMode              bool                          `json:"developerMode"`

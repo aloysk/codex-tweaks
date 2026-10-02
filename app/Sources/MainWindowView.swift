@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 struct MainWindowView: View {
     enum Section: String, CaseIterable, Identifiable {
         case overview
+        case appearance
         case packages
         case logs
         case updates
@@ -15,6 +16,8 @@ struct MainWindowView: View {
             switch self {
             case .overview:
                 return .navOverview
+            case .appearance:
+                return .navAppearance
             case .packages:
                 return .navPackages
             case .logs:
@@ -28,6 +31,8 @@ struct MainWindowView: View {
             switch self {
             case .overview:
                 return "rectangle.3.group"
+            case .appearance:
+                return "paintpalette"
             case .packages:
                 return "shippingbox"
             case .logs:
@@ -66,6 +71,8 @@ struct MainWindowView: View {
                     showPackages: { selection = .packages },
                     showLogs: { selection = .logs }
                 )
+            case .appearance:
+                AppearanceView(model: model)
             case .packages:
                 TweakPackagesView(model: model)
             case .logs:

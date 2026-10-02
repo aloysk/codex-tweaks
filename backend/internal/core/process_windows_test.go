@@ -4,7 +4,6 @@ package core
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -30,12 +29,11 @@ func TestWindowsObservationPinsPathProcessCreationAndListenerOwner(t *testing.T)
 		{"exited", nil, 0, "", 0, false, false, false},
 	} {
 		t.Run(fixture.name, func(t *testing.T) {
-			listeners := []any{}
+			listeners := []windowsListenerIdentity{}
 			if fixture.listenerID != 0 {
-				listeners = append(listeners, map[string]any{"processID": fixture.listenerID, "address": fixture.address})
+				listeners = append(listeners, windowsListenerIdentity{ProcessID: fixture.listenerID, Address: fixture.address})
 			}
-			data, _ := json.Marshal(map[string]any{"executablePath": identity.ExecutablePath, "applicationID": identity.ApplicationID, "processes": fixture.processes, "listeners": listeners, "unverifiedCount": fixture.unverified})
-			observation, err := parseWindowsCodexObservation(data)
+			observation, err := validateWindowsCodexObservation(windowsProcessObservation{ExecutablePath: identity.ExecutablePath, ApplicationID: identity.ApplicationID, Processes: fixture.processes, Listeners: listeners, UnverifiedCount: fixture.unverified})
 			if (err != nil) != fixture.wantErr || observation.Running != fixture.wantRunning || observation.ListenerOwned != fixture.wantOwned {
 				t.Fatalf("observation=%#v err=%v", observation, err)
 			}
@@ -50,15 +48,19 @@ func TestWindowsEnhancedLaunchPreservesRunningProcesses(t *testing.T) {
 	calls := 0
 	platform := &windowsPlatform{runner: windowsCommandRunnerFunc(func(_ context.Context, command string, args []string, _ string, _ []string) (CommandResult, error) {
 		calls++
-		if command != "powershell.exe" || !containsString(args, codexProcessObservationPowerShell) {
-			t.Fatalf("process mutated: %s %v", command, args)
-		}
-		return CommandResult{Output: `{"processes":[],"listeners":[],"unverifiedCount":1}`}, nil
-	})}
+		t.Fatalf("process mutated: %s %v", command, args)
+		return CommandResult{}, nil
+	}), observeProcesses: func(context.Context) (windowsProcessObservation, error) {
+		return windowsProcessObservation{UnverifiedCount: 1}, nil
+	}}
 	if err := platform.RestartCodex(context.Background(), CodexLaunchOptions{Mode: CodexLaunchEnhanced}); !errors.Is(err, ErrManualCodexExitRequired) {
 		t.Fatalf("restart=%v", err)
 	}
-	if calls != 1 {
+	if calls != 0 {
 		t.Fatalf("unexpected mutation calls=%d", calls)
 	}
+}
+
+func noRunningWindowsObservation(context.Context) (windowsProcessObservation, error) {
+	return windowsProcessObservation{}, nil
 }

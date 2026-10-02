@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-const ProtocolVersion = 11
+const ProtocolVersion = 12
 
 type Controller struct {
 	mu                  sync.Mutex
@@ -42,6 +42,14 @@ type Controller struct {
 	buildNumber        string
 	preferredLanguages []string
 	disableBackground  bool
+	appearanceAssets   *appearanceAssetStore
+	appearancePreview  *AppearanceSettings
+	appearanceTargetID string
+	appearanceRevision uint64
+	appearanceStatus   string
+	appearanceErrorKey *string
+	appearanceCancel   context.CancelFunc
+	appearanceBusy     bool
 
 	config                       AppConfiguration
 	status                       AppStatus
@@ -151,6 +159,8 @@ func NewController(params InitializeParams, event func(AppSnapshot), dependencie
 		cancel()
 		return nil, err
 	}
+	controller.appearanceAssets = newAppearanceAssetStore(store.StateDirectory)
+	controller.appearanceStatus = "native"
 	if err := store.Prepare(); err != nil {
 		cancel()
 		return nil, err
@@ -222,6 +232,14 @@ func (c *Controller) loadConfiguration() error {
 	configuration.Language = NormalizeAppLanguage(configuration.Language)
 	configuration.DisabledPackageIDs = uniqueSorted(configuration.DisabledPackageIDs)
 	configuration.UpdateSkippedVersions = uniqueSorted(configuration.UpdateSkippedVersions)
+	if configuration.Appearance.Theme == "" && configuration.Appearance.ReadingLayout == "" && configuration.Appearance.BackgroundMode == "" && configuration.Appearance.SolidColor == "" && configuration.Appearance.ImageAssetID == nil && configuration.Appearance.OverlayOpacity == 0 {
+		configuration.Appearance = DefaultAppearanceSettings()
+	}
+	appearance, err := validateAppearanceSettings(configuration.Appearance)
+	if err != nil {
+		return fmt.Errorf("invalid appearance configuration: %w", err)
+	}
+	configuration.Appearance = appearance
 	c.config = configuration
 	c.disabledPackageIDs = stringSet(configuration.DisabledPackageIDs)
 	return c.persistConfigurationLocked()
@@ -323,8 +341,9 @@ func (c *Controller) Snapshot() AppSnapshot {
 	})
 	return AppSnapshot{
 		ProtocolVersion: ProtocolVersion, Presentation: presentation, Status: c.status,
-		Runtime: c.runtimeSnapshotLocked(),
-		Enabled: c.config.Enabled, DisableGPUAcceleration: c.config.DisableGPUAcceleration,
+		Runtime:    c.runtimeSnapshotLocked(),
+		Appearance: c.appearanceSnapshotLocked(),
+		Enabled:    c.config.Enabled, DisableGPUAcceleration: c.config.DisableGPUAcceleration,
 		DeveloperMode:             c.config.DeveloperMode,
 		DeveloperAllowUnknownNode: c.developerAllowUnknownNode, Packages: packageViews,
 		DisabledPackageIDs: sortedTrueKeys(c.disabledPackageIDs), BuildingPackageIDs: sortedTrueKeys(c.buildingPackageIDs),
@@ -564,9 +583,11 @@ func (c *Controller) emit() {
 	if c.event == nil {
 		return
 	}
-	snapshot := c.Snapshot()
 	c.eventMu.Lock()
 	defer c.eventMu.Unlock()
+	// Capture under the publisher lock: a queued event must not send an old
+	// preview after a concurrent cancel or restore has already been published.
+	snapshot := c.Snapshot()
 	if c.lastEmittedSnapshot != nil && reflect.DeepEqual(*c.lastEmittedSnapshot, snapshot) {
 		return
 	}
@@ -625,6 +646,7 @@ func (c *Controller) Shutdown() error {
 		}
 		c.shuttingDown = true
 		c.runtimeEpoch++
+		c.invalidateAppearanceLocked()
 		if c.injectCancel != nil {
 			c.injectCancel()
 		}
