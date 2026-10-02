@@ -1,0 +1,11 @@
+# C# project gitleaks allowlist (migrated from v2)
+[extend]
+useDefault = true
+
+[allowlist]
+paths = [
+    '''(^|/)bin/''',
+    '''(^|/)obj/''',
+    '''\.Designer\.cs$''',
+    '''\.resx$''',
+]

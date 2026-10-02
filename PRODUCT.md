@@ -2,6 +2,8 @@
 
 <!-- impeccable:product-schema 1 -->
 
+本文记录继承的应用能力与底层产品原则。Fork 的新增目标是“官方 Codex 主工作窗口 + 独立增强控制面板 + 可选胶囊”；详细范围以 [PRD](docs/desktop-enhancement/PRD.zh-CN.md) 为准，视觉方向见 [DESIGN.md](DESIGN.md)。这些新增能力尚未实现，本文既有架构约束继续适用。
+
 ## Platform
 
 adaptive
@@ -21,7 +23,7 @@ Codex Tweaks 让用户无需直接编辑 Codex 应用文件，即可按功能包
 ## Operating Context
 
 - 用户在自己的桌面会话中同时运行 Codex Tweaks 与 Codex。
-- Node.js 只用于功能包构建；Git 用于远程包安装和更新。
+- Node.js 用于功能包构建，也可在用户授权后运行声明了 Node 后端的包；Git 用于远程包安装和更新。
 - 功能包从本地目录、ZIP 或 Git 来源进入，编译成功后原子切换。
 - Windows 版本通过 Velopack 在当前用户目录安装、卸载和整体更新；macOS 使用原生应用与 DMG。
 

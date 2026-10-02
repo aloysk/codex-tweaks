@@ -1,0 +1,111 @@
+"""Conventional commit - validate commit message follows Conventional Commits.
+
+Provider-mode pre-commit hook for the commit-msg stage. The pre-commit
+framework passes the commit message file path as ``sys.argv[1]`` (verified
+via E1 spike: requires ``pass_filenames: true`` in the hook manifest).
+
+Derived from famu3's commit_msg.py. See
+``docs/plans/reinforce-from-famu3-v4.4.0.md`` (ENG REVIEW REPORT, E1).
+"""
+
+from __future__ import annotations
+
+import re
+import sys
+from pathlib import Path
+
+COMMIT_TYPES = (
+    "feat",
+    "fix",
+    "docs",
+    "style",
+    "refactor",
+    "test",
+    "chore",
+    "perf",
+    "ci",
+    "revert",
+)
+
+# <type>(<scope>)?!?: <subject>   subject is 1-72 chars after ": "
+HEADER_PATTERN = re.compile(
+    rf"^({'|'.join(COMMIT_TYPES)})(\([a-z0-9][a-z0-9-]*\))?!?: .{{1,72}}$"
+)
+
+# Commit subjects that bypass conventional-commit validation.
+BYPASS_PREFIXES = ("Merge ", "Revert ", "fixup! ", "squash! ")
+
+
+def first_content_line(message: str) -> str:
+    """Return the first non-empty, non-comment line of a commit message."""
+    for line in message.splitlines():
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#"):
+            return stripped
+    return ""
+
+
+def validate_header(header: str) -> bool:
+    """Return True if header is a valid Conventional Commit title or bypassed."""
+    if header.startswith(BYPASS_PREFIXES):
+        return True
+    return HEADER_PATTERN.match(header) is not None
+
+
+def main() -> int:
+    """Entry point for the conventional-commit hook.
+
+    Returns:
+        0 if the commit message is valid (or bypassed); 1 otherwise.
+    """
+    if len(sys.argv) != 2:
+        print(
+            "conventional-commit: FAIL - expected commit message file path"
+            " as the only argument.",
+            file=sys.stderr,
+        )
+        print(
+            "  The pre-commit framework passes the message file via sys.argv[1]"
+            " (requires pass_filenames: true in the hook manifest).",
+            file=sys.stderr,
+        )
+        return 1
+
+    message_path = Path(sys.argv[1])
+    try:
+        # utf-8-sig strips a leading BOM if present (BOM-prefixed messages
+        # would otherwise break the ^type anchor in HEADER_PATTERN).
+        message = message_path.read_text(encoding="utf-8-sig", errors="replace")
+    except OSError as e:
+        print(
+            f"conventional-commit: FAIL - cannot read {message_path}: {e}",
+            file=sys.stderr,
+        )
+        return 1
+
+    header = first_content_line(message)
+    if not header:
+        print("conventional-commit: FAIL - empty commit message.", file=sys.stderr)
+        return 1
+
+    if validate_header(header):
+        return 0
+
+    types = ", ".join(COMMIT_TYPES)
+    print(
+        "conventional-commit: FAIL - commit header must use Conventional Commits.",
+        file=sys.stderr,
+    )
+    print(f"  Allowed types: {types}", file=sys.stderr)
+    print(
+        "  Format: <type>(<scope>)?: <subject>   (subject 1-72 chars,"
+        " imperative mood, no trailing period)",
+        file=sys.stderr,
+    )
+    print("  Example: feat(hooks): add conventional-commit gate", file=sys.stderr)
+    print(f"  Actual: {header!r}", file=sys.stderr)
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

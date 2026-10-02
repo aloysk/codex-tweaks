@@ -29,3 +29,5 @@
 ## Fork desktop enhancement work
 
 For the fork's desktop enhancement requirements, implementation, or acceptance review, start with `docs/desktop-enhancement/README.md`. Use its PRD for proposed behavior, its implementation plan for verification gates, and `UPSTREAM.md` when changing compatibility, process control, package trust, installation, or updates. Keep proposed capabilities distinct from upstream's currently implemented product; the architecture and generated-source rules above continue to apply.
+
+Before placing new modules or changing persisted names, read `ARCHITECTURE.md`. For native surfaces, themes or capsule interactions, read `DESIGN.md`; for external code or asset reuse, read `docs/resources/README.md`. Bootstrap and validate development infrastructure through `CONTRIBUTING.md`, preserving the template overlay as the source of project-specific hook policy.

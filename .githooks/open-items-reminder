@@ -1,0 +1,253 @@
+"""Open-items reminder — advisory nudge to sync the open-items ledger.
+
+Never blocks (always exits 0): the ledger is a discipline aid, not a gate.
+Fires when staged files look like campaign closing artifacts
+(plans/**/SUMMARY.md, REPORT.md, ...) while the ledger is not staged in
+the same batch. The ledger path defaults to docs/open-items.md; a project
+with its own authoritative path overrides it via .githooks/open-items.conf
+(OPEN_ITEMS_PATH=..., repo-relative). Mirrors the cross-repo open-items
+convention: the ledger is the single authoritative list of open items
+(pending decisions, items needing real-machine verification, follow-ups,
+cleanup), and campaign closeout commits must sync it — add carry-over
+items, remove finished or expired ones.
+
+Used in two modes:
+- Template mode: installed into target project's .githooks/ as
+  self-contained script (open-items-reminder)
+- Provider mode: invoked via pre-commit-framework entry point
+"""
+
+from __future__ import annotations
+
+import fnmatch
+import posixpath
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+CONF_RELATIVE_PATH = ".githooks/open-items.conf"  # repo-relative, forward slashes
+LEDGER_PATH = "docs/open-items.md"  # default when the conf sets nothing usable
+
+# Campaign closing artifacts. fnmatch's '*' crosses '/', so each shape is
+# listed twice: once anchored at the repo root (plans/...) and once for any
+# nested location (*/plans/...), covering both conventions.
+_CLOSING_NAMES = (
+    "SUMMARY.md",
+    "TASK-LIST.md",
+    "REPORT.md",
+    "CLOSEOUT.md",
+    "FINAL-REVIEW.md",
+    "REVIEW.md",
+    "RECORD.md",
+)
+CLOSING_PATTERNS = tuple(
+    f"{prefix}plans/*/{name}" for name in _CLOSING_NAMES for prefix in ("", "*/")
+)
+
+# 'C:' / 'c:' prefix — drive form. String checks, not Path.is_absolute():
+# that is drive-form-blind on POSIX, and the refusal must not depend on
+# the platform the hook happens to run on. A leading '/' (checked
+# separately) also catches normalized UNC '//server/...' values.
+_DRIVE_PREFIX_RE = re.compile(r"^[A-Za-z]:")
+
+
+def _warn(message: str, prefix: str = "open-items-reminder") -> None:
+    """One advisory warning line on stderr; never raises.
+
+    ``prefix`` names the emitting tool so warnings land under the right
+    owner: the module default is the reminder hook's identity; the
+    installer reuses this resolver and passes its own prefix (F21).
+    """
+    print(f"{prefix}: WARNING - {message}", file=sys.stderr)
+
+
+def resolve_ledger_relative_path(
+    root: Path | str | None = None, warn_prefix: str = "open-items-reminder"
+) -> str:
+    """Repo-relative, forward-slash ledger path from the conf when present,
+    LEDGER_PATH otherwise. ``root`` defaults to Path.cwd(); the conf is read
+    at ``<root>/<CONF_RELATIVE_PATH>``. ``warn_prefix`` names the emitting
+    tool in the conf warnings (the reminder hook keeps the module default;
+    the installer, which reuses this resolver for seeding and ``--check``,
+    passes its own prefix so its warnings are not misattributed to the
+    hook — F21).
+
+    Conf format follows the changelog-gate.conf conventions: KEY=VALUE
+    lines, '#' comments, blank lines skipped, surrounding whitespace
+    stripped, read as utf-8-sig. Degenerate values (unknown key, empty
+    value, absolute path, '..' segments, or anything normalizing to
+    '.'), plus an unreadable/non-UTF-8 conf, warn on stderr and fall
+    back to LEDGER_PATH — an advisory hook must never crash a commit
+    over its own configuration. Accepted values are normalized to
+    canonical posix form (posixpath.normpath: './docs/x.md' →
+    'docs/x.md') so the staged comparison and the reminder text always
+    match git's spelling. The first VALID OPEN_ITEMS_PATH line decides
+    (malformed, empty, or unknown lines warn and are skipped; a refused
+    value falls back immediately); later duplicates are ignored.
+    Side-effect-free apart from those warnings and never raises.
+    """
+    base = Path(root) if root is not None else Path.cwd()
+    try:
+        # utf-8-sig transparently strips a BOM: a BOM-prefixed key would
+        # otherwise become '\ufeffOPEN_ITEMS_PATH' (unknown-key warning,
+        # silently losing the override).
+        raw = (base / CONF_RELATIVE_PATH).read_text(encoding="utf-8-sig")
+    except FileNotFoundError:
+        return LEDGER_PATH  # no conf: the overwhelmingly common case
+    except (OSError, ValueError) as e:
+        # ValueError, not just UnicodeDecodeError (its subclass): an
+        # embedded-NUL root raises ValueError at open time too, and the
+        # helper must never raise whatever the caller passes.
+        _warn(
+            f"cannot read {CONF_RELATIVE_PATH}: {e} (using {LEDGER_PATH})",
+            warn_prefix,
+        )
+        return LEDGER_PATH
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" not in line:
+            _warn(f"malformed config line (no '='): {line!r}", warn_prefix)
+            continue
+        key, value = line.split("=", 1)
+        if "#" in value:
+            value = value[: value.index("#")]
+        key = key.strip()
+        value = value.strip()
+        if not key or not value:
+            _warn(f"empty key/value in config: {line!r}", warn_prefix)
+            continue
+        if key != "OPEN_ITEMS_PATH":
+            _warn(f"unknown config key: {key!r}", warn_prefix)
+            continue
+        # Windows-edited values arrive backslash-separated; staged git
+        # paths and the reminder text are forward-slash.
+        normalized = value.replace("\\", "/")
+        if normalized.startswith("/") or _DRIVE_PREFIX_RE.match(normalized):
+            _warn(
+                f"OPEN_ITEMS_PATH must be a repo-relative path,"
+                f" got {value!r} (using {LEDGER_PATH})",
+                warn_prefix,
+            )
+            return LEDGER_PATH
+        if any(segment == ".." for segment in normalized.split("/")):
+            # Conservative: even a contained '..' (docs/../x.md) is
+            # refused — resolve_ledger_path() feeds the installer's SEED
+            # write, and any '..' segment writes outside the target repo.
+            _warn(
+                f"OPEN_ITEMS_PATH must not contain '..' segments,"
+                f" got {value!r} (using {LEDGER_PATH})",
+                warn_prefix,
+            )
+            return LEDGER_PATH
+        # Collapse non-canonical spellings ('./docs/x.md', 'docs//x.md',
+        # trailing '/') to git's staged spelling — otherwise the staged
+        # comparison could never match and the reminder could never be
+        # silenced. posixpath on purpose: git index paths are POSIX-shaped
+        # on every platform (ntpath would keep drive forms alive).
+        normalized = posixpath.normpath(normalized)
+        if normalized in ("", "."):
+            _warn(
+                f"OPEN_ITEMS_PATH normalizes to an empty path or '.',"
+                f" got {value!r} (using {LEDGER_PATH})",
+                warn_prefix,
+            )
+            return LEDGER_PATH
+        return normalized
+    return LEDGER_PATH
+
+
+def resolve_ledger_path(root: Path | str | None = None) -> Path:
+    """Absolute path: ``(root or cwd) / resolve_ledger_relative_path(root)``."""
+    base = Path(root) if root is not None else Path.cwd()
+    return base / resolve_ledger_relative_path(root)
+
+
+def get_staged_files(cwd: str | None = None) -> list[str]:
+    """Best-effort list of staged (added/copied/modified/renamed) paths.
+
+    Advisory hook: any git failure is printed as a warning and returns an
+    empty list — this hook must never raise its way to a non-zero exit.
+    Output is NUL-separated (-z): git quotes non-ASCII/special paths by
+    default (core.quotePath), which would silently break matching; -z
+    emits exact paths. Decoding is replace-on-error so a legacy-locale
+    console can never crash the hook either.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "diff", "--cached", "--name-only", "-z", "--diff-filter=ACMR"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            cwd=cwd,
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError) as e:
+        print(
+            f"open-items-reminder: WARNING - cannot run git: {e};"
+            " skipping the reminder for this commit"
+            " (check that git is installed and the repo is healthy)",
+            file=sys.stderr,
+        )
+        return []
+    if result.returncode != 0:
+        print(
+            "open-items-reminder: WARNING - git diff failed: "
+            + (result.stderr or "").strip()
+            + "; skipping the reminder for this commit",
+            file=sys.stderr,
+        )
+        return []
+    return [p for p in (result.stdout or "").split("\0") if p]
+
+
+def is_closing_artifact(filepath: str) -> bool:
+    """True if the path looks like a campaign closing artifact.
+
+    fnmatchcase (not fnmatch): git outputs literal index paths, so matching
+    must stay case-sensitive and identical on every platform — fnmatch is
+    case-insensitive on Windows only.
+    """
+    return any(fnmatch.fnmatchcase(filepath, pat) for pat in CLOSING_PATTERNS)
+
+
+def _printable(path: str) -> str:
+    """Escape control characters: -z emits them raw in paths, and the
+    reminder goes straight to the user's terminal."""
+    return "".join(c if c.isprintable() else f"\\x{ord(c):02x}" for c in path)
+
+
+def main() -> int:
+    """Entry point; always returns 0 (advisory, never blocks the commit)."""
+    # A piped stdout on a legacy-code-page console (pre-3.15 Windows default)
+    # would otherwise raise UnicodeEncodeError printing non-ASCII paths —
+    # exit 1 for an advisory hook. stderr already defaults to
+    # backslashreplace; mirror that for stdout.
+    if sys.stdout is not None and hasattr(sys.stdout, "reconfigure"):
+        try:
+            sys.stdout.reconfigure(errors="backslashreplace")
+        except (ValueError, OSError):
+            pass
+    ledger = resolve_ledger_relative_path()
+    staged = get_staged_files()
+    closing = [f for f in staged if is_closing_artifact(f)]
+    if not closing or ledger in staged:
+        return 0
+    shown = "\n  ".join(_printable(f) for f in closing[:5])
+    more = f"\n  ... and {len(closing) - 5} more" if len(closing) > 5 else ""
+    print(
+        "open-items-reminder: closing artifacts staged without the ledger:\n  "
+        + shown
+        + more
+        + f"\nIf this batch closes out work, sync {ledger} in the same"
+        " commit (add carry-over items, remove finished/expired ones)."
+        " Advisory only - commit anyway if the ledger is already current."
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

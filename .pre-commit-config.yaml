@@ -1,0 +1,54 @@
+# Installed by pre-commit-template v5.7.0
+default_install_hook_types:
+- pre-commit
+- commit-msg
+repos:
+- repo: https://github.com/pre-commit/pre-commit-hooks
+  rev: v6.0.0
+  hooks:
+  - id: check-added-large-files
+    args:
+    - --maxkb=51200
+  - id: check-merge-conflict
+  - id: detect-private-key
+    exclude: (^|/)tests/
+  - id: check-case-conflict
+  - id: check-xml
+  - id: no-commit-to-branch
+    args:
+    - --branch
+    - main
+    - --branch
+    - master
+  - id: trailing-whitespace
+    exclude: \.(Designer\.cs|resx)$
+  - id: end-of-file-fixer
+    exclude: (?:\.(Designer\.cs|resx)$|^app/Resources/Icons/AppIcon\.icon/icon\.json$)
+  - id: check-yaml
+  - id: check-json
+  - id: check-toml
+  - id: mixed-line-ending
+    args:
+    - --fix=no
+  - id: check-symlinks
+  - id: destroyed-symlinks
+  - id: check-illegal-windows-names
+    exclude: ^[A-Za-z]:[/]
+  - id: check-executables-have-shebangs
+    exclude: ^\.githooks/
+  - id: check-shebang-scripts-are-executable
+    exclude: ^\.githooks/
+- repo: https://github.com/gitleaks/gitleaks
+  rev: v8.30.1
+  hooks:
+  - id: gitleaks
+- repo: local
+  hooks:
+  - id: conventional-commit
+    name: conventional-commit
+    entry: python .githooks/conventional-commit
+    language: python
+    stages:
+    - commit-msg
+    always_run: true
+    pass_filenames: true

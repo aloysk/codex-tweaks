@@ -1,0 +1,639 @@
+"""Changelog gate — requires CHANGELOG.md update when source files change.
+
+Used in two modes:
+- Template mode: installed into target project's .githooks/ as self-contained script
+- Provider mode: invoked via pre-commit-framework entry point
+
+Optional FORMAT_CHECK=kacl config key additionally validates the Keep a
+Changelog structure (categories, ISO dates) of the staged CHANGELOG.md.
+"""
+
+from __future__ import annotations
+
+import os
+import re
+import subprocess
+import sys
+from datetime import date
+from pathlib import Path
+
+# The only supported FORMAT_CHECK value ("Keep a Changelog").
+VALID_FORMAT_CHECK = "kacl"
+
+# A staged changelog larger than this fails closed instead of being fully
+# loaded and validated (memory/scope guard for consumer repositories).
+_MAX_STAGED_BLOB_CHARS = 2_000_000
+
+# Keep a Changelog 1.1.0 core categories plus this repo's Docs extension.
+# Accepts the "Category (suffix)" prefix form, e.g. "Fixed (rollback notes)".
+_CATEGORY_HEADING_RE = re.compile(
+    r"^(Added|Changed|Deprecated|Removed|Fixed|Security|Docs)(?: \([^)]*\))?$"
+)
+# `## [<name>]` section headers in either shape (scope detection); the full
+# strict form is checked separately for version section headers.
+_SECTION_HEADING_RE = re.compile(r"^## \[([^\]]+)\]")
+_UNRELEASED_HEADING_RE = re.compile(r"^## \[Unreleased\]\s*$")
+_VERSION_HEADING_STRICT_RE = re.compile(r"^## \[\d+\.\d+\.\d+\] - \d{4}-\d{2}-\d{2}$")
+# Date-group stacking headers under [Unreleased] (the repo's established
+# form). Deliberately NOT valid inside a version section: those use flat
+# categories and date tracing is git history's job.
+_DATE_GROUP_HEADING_RE = re.compile(r"^### \d{4}-\d{2}-\d{2}\s*$")
+# Control characters (C0 + DEL) - escaped in violation echoes so changelog
+# content can neither crash a legacy console nor inject terminal sequences.
+_CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
+
+
+def load_gate_config() -> dict[str, str]:
+    """Load changelog-gate.conf from next to this script; defaults if absent.
+
+    Self-contained (no package import) so this module can be copied verbatim
+    into a consumer's .githooks/ and run standalone.
+    """
+    valid_keys = {"RUNTIME_PATTERNS", "EXCLUDE_PATTERNS", "FORMAT_CHECK"}
+    config: dict[str, str] = {"RUNTIME_PATTERNS": ".", "EXCLUDE_PATTERNS": ""}
+    try:
+        conf = Path(__file__).resolve().parent / "changelog-gate.conf"
+    except NameError:
+        return config  # __file__ unavailable (e.g. frozen/REPL)
+    if not conf.exists():
+        return config
+    try:
+        # utf-8-sig transparently strips a BOM: a BOM-prefixed first key
+        # would otherwise become '\ufeffFORMAT_CHECK' (unknown-key warning,
+        # silently disabling the opted-in check).
+        raw = conf.read_text(encoding="utf-8-sig")
+    except (OSError, UnicodeDecodeError) as e:
+        # Defaults keep the blocking direction strict (RUNTIME_PATTERNS "."
+        # matches every staged path); the warning names the real cause.
+        print(
+            f"changelog-gate: WARNING - cannot read {conf.name}: {e}"
+            " (using built-in defaults)",
+            file=sys.stderr,
+        )
+        return config
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" not in line:
+            print(
+                f"changelog-gate: WARNING - malformed config line (no '='): {line!r}",
+                file=sys.stderr,
+            )
+            continue
+        k, v = line.split("=", 1)
+        if "#" in v:
+            v = v[: v.index("#")]
+        key = k.strip()
+        value = v.strip()
+        if not key or not value:
+            print(
+                f"changelog-gate: WARNING - empty key/value in config: {line!r}",
+                file=sys.stderr,
+            )
+            continue
+        if key not in valid_keys:
+            print(
+                f"changelog-gate: WARNING - unknown config key: {key!r}",
+                file=sys.stderr,
+            )
+            # Warn AND skip — the same semantics as open_items' parser;
+            # warn-then-store would accumulate junk keys that a future
+            # reader could mistake for live config.
+            continue
+        if key == "FORMAT_CHECK" and value != VALID_FORMAT_CHECK:
+            print(
+                f"changelog-gate: WARNING - invalid FORMAT_CHECK value:"
+                f" {value!r} (only {VALID_FORMAT_CHECK!r} is supported);"
+                " format check treated as disabled",
+                file=sys.stderr,
+            )
+            continue
+        config[key] = value
+    return config
+
+
+def _run_git(
+    cmd: list[str],
+    *,
+    what: str,
+    cwd: Path | None = None,
+    decode_utf8: bool = False,
+) -> subprocess.CompletedProcess[str]:
+    """Run one git subprocess for the gate (shared scaffolding).
+
+    ``decode_utf8`` decodes output as UTF-8 with replacement: a broken
+    changelog must fail the format check, not the codec, and the staged
+    list must stay readable whatever the console locale (open_items'
+    codec contract, adopted here by ledger item F10).
+
+    Raises (printed at the source + re-raised): FileNotFoundError (git
+    not on PATH), TimeoutExpired (>30s), OSError (not executable / ACL).
+    """
+    try:
+        if decode_utf8:
+            return subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                cwd=cwd,
+                timeout=30,
+                encoding="utf-8",
+                errors="replace",
+            )
+        return subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            cwd=cwd,
+            timeout=30,
+        )
+    except FileNotFoundError:
+        print(
+            "changelog-gate: ERROR - git is not installed or not on PATH",
+            file=sys.stderr,
+        )
+        raise
+    except subprocess.TimeoutExpired:
+        print(
+            f"changelog-gate: ERROR - git {what} timed out",
+            file=sys.stderr,
+        )
+        raise
+    except OSError as e:
+        print(f"changelog-gate: ERROR - cannot run git: {e}", file=sys.stderr)
+        raise
+
+
+def _require_success(result: subprocess.CompletedProcess[str], *, what: str) -> None:
+    """Surface git stderr and raise when a gate git call exits non-zero."""
+    if result.returncode != 0:
+        err = result.stderr.strip() if result.stderr else "(git gave no diagnostics)"
+        print(f"changelog-gate: git error: {err}", file=sys.stderr)
+        raise RuntimeError(f"git {what} failed: {err}")
+
+
+def get_staged_files(cwd: Path | None = None) -> list[str]:
+    """Get list of staged (added/copied/modified/renamed) file paths.
+
+    Output is NUL-separated (-z): git C-quotes non-ASCII/special paths by
+    default (core.quotePath), which would silently hide a staged source
+    path from the gate; -z emits exact paths. Decoding is explicit UTF-8
+    with replacement (a legacy-locale console can never crash the gate)
+    — the same codec contract open_items established. Inherited edge
+    from text=True, accepted identically there: a literal CR byte
+    inside a staged path is translated to \n by the universal-newlines
+    decode layer (pathological paths only; split on NUL is unaffected).
+
+    Args:
+        cwd: Working directory for git command. Defaults to current directory.
+
+    Raises:
+        FileNotFoundError: git not installed / not on PATH (printed + re-raised).
+        subprocess.TimeoutExpired: git diff exceeded 30s (printed + re-raised).
+        OSError: other git invocation failure, e.g. PermissionError or a locked
+            index (printed + re-raised).
+        RuntimeError: git exited non-zero (printed + re-raised).
+    """
+    result = _run_git(
+        ["git", "diff", "--cached", "--name-only", "-z", "--diff-filter=ACMR"],
+        what="diff",
+        cwd=cwd,
+        decode_utf8=True,
+    )
+    _require_success(result, what="diff")
+    return [p for p in (result.stdout or "").split("\0") if p]
+
+
+def get_changelog_dr_status(cwd: Path | None = None) -> tuple[str, str | None]:
+    r"""Detect a staged deletion or rename-away of the root CHANGELOG.md.
+
+    Returns ("none", None) when the changelog is untouched, ("deleted",
+    None) when a D row names CHANGELOG.md, or ("renamed", <new_path>)
+    when an R row's OLD path is CHANGELOG.md. A rename INTO CHANGELOG.md
+    returns ("none", None) — the staged membership flow already sees the
+    new path.
+
+    Runs the FULL staged diff, no pathspec and no diff-filter: D rows
+    are what get_staged_files' ACMR filter drops, and a rename's old
+    path is absent from its --name-only output for the other reason —
+    only the new path shows — both leaving the old name invisible to
+    the membership check. A pathspec-limited probe would also collapse
+    a rename-away to a bare D row, hiding the new path the FAIL message
+    must name.
+
+    -z row grammar (fields NUL-terminated, paths unquoted, output ends
+    with one trailing NUL; records concatenate back to back):
+        <status>\0<path>\0           one-path rows: A/M/D/T
+        <Rscore>\0<old>\0<new>\0     two-path rows: renames (C copies
+                                     use the same shape)
+
+    Path comparison is EXACT equality with the root "CHANGELOG.md" —
+    the same exact-string rule as main()'s membership check, so
+    sub/CHANGELOG.md is an ordinary file and never fires this probe.
+
+    Raises like get_staged_files (printed at the source + re-raised).
+    """
+    result = _run_git(
+        ["git", "diff", "--cached", "--name-status", "-z"],
+        what="diff --name-status",
+        cwd=cwd,
+        decode_utf8=True,
+    )
+    _require_success(result, what="diff --name-status")
+    fields = (result.stdout or "").split("\0")
+    i = 0
+    while i < len(fields):
+        status = fields[i]
+        if not status:  # trailing NUL / empty field
+            i += 1
+            continue
+        if status[0] in ("R", "C"):
+            paths = fields[i + 1 : i + 3]
+            old = paths[0] if paths else ""
+            new = paths[1] if len(paths) > 1 else ""
+            if status.startswith("R") and old == "CHANGELOG.md":
+                return ("renamed", new)
+            i += 3
+        else:
+            path = fields[i + 1] if i + 1 < len(fields) else ""
+            if status == "D" and path == "CHANGELOG.md":
+                return ("deleted", None)
+            i += 2
+    return ("none", None)
+
+
+def read_staged_blob(path: str = "CHANGELOG.md") -> str:
+    """Read the staged (index) blob of ``path`` via ``git show :<path>``.
+
+    The index — not the working tree — is what the commit will contain, so
+    FORMAT_CHECK must judge partial staging against the staged copy.
+
+    A single leading UTF-8 BOM (decoded to ``\\ufeff``) is stripped — the
+    conf entry already decodes utf-8-sig, and a BOM'd first line
+    ``## [Unreleased]`` would otherwise miss the section regex and
+    silently drop the whole section from validation (csharp-profile repos
+    make BOM'd .md files the norm). Only the FIRST character: a U+FEFF
+    typed inside the body is content, not an encoding mark.
+
+    Raises like get_staged_files (printed at the source + re-raised); the
+    caller surfaces the failure and exits 1 — a read failure must never
+    let a broken changelog through.
+    """
+    result = _run_git(["git", "show", f":{path}"], what="show", decode_utf8=True)
+    _require_success(result, what="show")
+    text = result.stdout
+    if text.startswith("\ufeff"):
+        text = text[1:]
+    return text
+
+
+def _ascii_echo(text: str) -> str:
+    """Escape non-ASCII and control characters so a violation echo can
+    neither crash a legacy console nor inject terminal escape sequences."""
+    escaped = _CONTROL_CHARS_RE.sub(lambda m: f"\\x{ord(m.group()):02x}", text)
+    return escaped.encode("ascii", "backslashreplace").decode("ascii")
+
+
+def _printable_path(path: str) -> str:
+    """Escape control characters in a staged path bound for stdout/stderr.
+
+    -z emits control characters raw inside paths; printed raw they could
+    inject terminal escape sequences. Non-ASCII stays verbatim (unlike
+    _ascii_echo): the gate must still name the exact file it complains
+    about. Mirrors open_items' ``_printable`` idiom, kept local because
+    this module ships self-contained into consumer .githooks/.
+    """
+    return "".join(c if c.isprintable() else f"\\x{ord(c):02x}" for c in path)
+
+
+def _is_valid_date_group(line: str) -> bool:
+    """A `### YYYY-MM-DD` date-group header with a real calendar date -
+    shape alone accepting `### 2026-13-99` would be inconsistent with the
+    calendar-validated version headers."""
+    m = _DATE_GROUP_HEADING_RE.match(line)
+    if m is None:
+        return False
+    try:
+        date.fromisoformat(line[4:].strip())
+    except ValueError:
+        return False
+    return True
+
+
+def _is_valid_version_header(line: str) -> bool:
+    """`## [X.Y.Z] - YYYY-MM-DD` with a real calendar date."""
+    if not _VERSION_HEADING_STRICT_RE.match(line):
+        return False
+    date_part = line.rsplit(" - ", 1)[1]
+    try:
+        date.fromisoformat(date_part)
+    except ValueError:
+        return False
+    return True
+
+
+def _is_category(line: str) -> bool:
+    """A (###/#### level) heading that is an allowed category, with an
+    optional " (suffix)"."""
+    return _CATEGORY_HEADING_RE.match(line.lstrip("#").strip()) is not None
+
+
+def _is_heading(line: str) -> bool:
+    """A `###`/`####` level heading."""
+    return line.startswith(("### ", "#### "))
+
+
+def validate_changelog_format(changelog_text: str) -> list[str]:
+    """Validate Keep a Changelog structure; return violation messages.
+
+    Line numbers are 1-based positions in the passed text (callers pass the
+    staged blob). Scope is [Unreleased] + the FIRST version section only —
+    new content is guarded, historical sections stay append-only.
+
+    Rules:
+    - version section header must be `## [X.Y.Z] - YYYY-MM-DD` (calendar-valid)
+    - under [Unreleased]: `### YYYY-MM-DD` date-group headers are exempt (the
+      established stacking form), any other `###` violates; `####` must be a
+      category
+    - under the version section: `###` must be a category — the date-group
+      exemption belongs to [Unreleased] only
+    - categories: Added/Changed/Deprecated/Removed/Fixed/Security/Docs, with
+      an optional " (suffix)" — empty list means the format check passed
+    """
+    lines = changelog_text.splitlines()
+    violations: list[str] = []
+
+    def section_end(start: int) -> int:
+        for i in range(start + 1, len(lines)):
+            if lines[i].startswith("## "):
+                return i
+        return len(lines)
+
+    unreleased_idx: int | None = None
+    version_idx: int | None = None
+    for i, line in enumerate(lines):
+        m = _SECTION_HEADING_RE.match(line)
+        if not m:
+            continue
+        if _UNRELEASED_HEADING_RE.match(line):
+            if unreleased_idx is None:
+                unreleased_idx = i
+            continue
+        version_idx = i
+        break
+
+    if unreleased_idx is not None:
+        end = section_end(unreleased_idx)
+        for i in range(unreleased_idx + 1, end):
+            line = lines[i]
+            if line.startswith("### ") and not _is_valid_date_group(line):
+                violations.append(
+                    f"line {i + 1}: non-category-heading: {_ascii_echo(line)}"
+                )
+            elif line.startswith("#### ") and not _is_category(line):
+                violations.append(
+                    f"line {i + 1}: non-category-heading: {_ascii_echo(line)}"
+                )
+
+    if version_idx is not None:
+        header = lines[version_idx]
+        if not _is_valid_version_header(header):
+            # Distinguish "semver header with a bad date" from "bracket
+            # header that is not a version at all" (`## [Examples]`) - both
+            # are red, but the rule name should point at the fix.
+            rule = "version-header-date"
+            if not re.match(r"^## \[\d+\.\d+\.\d+\]", header):
+                rule = "not-a-version-header"
+            violations.append(f"line {version_idx + 1}: {rule}: {_ascii_echo(header)}")
+        end = section_end(version_idx)
+        for i in range(version_idx + 1, end):
+            line = lines[i]
+            if _is_heading(line) and not _is_category(line):
+                violations.append(
+                    f"line {i + 1}: non-category-heading: {_ascii_echo(line)}"
+                )
+
+    return violations
+
+
+def matches_patterns(filepath: str, patterns: str | None) -> bool:
+    """Check if filepath matches any of the space-separated patterns.
+
+    An empty pattern matches nothing (returns False).
+    Pattern '.' matches everything (returns True).
+
+    Pattern classes (five-way review round 1 — the previous matcher only
+    did root-anchored prefixes, which silently dead-lettered every
+    extension-style entry like ``.md`` and every nested-directory entry
+    like ``src/__pycache__`` in shipped conf files):
+
+    - ``dir/`` (trailing slash): matches that directory anywhere in the
+      tree (``bin/`` matches ``src/bin/x.cs``, not only ``bin/x``).
+    - ``a/b/``: same, for multi-segment directory prefixes.
+    - ``.md`` (contains a dot, no slash): filename suffix match anywhere.
+    - ``name`` (bare, no dot, no slash): any path component equals it.
+    - ``a/b`` (slash, no trailing slash): exact path or root-anchored
+      prefix (legacy anchored form).
+    """
+    if not patterns:
+        return False
+
+    normalized = filepath.replace("\\", "/")
+    parts = normalized.split("/")
+
+    for pat in patterns.split():
+        if pat == ".":
+            return True
+        p = pat.replace("\\", "/")
+        if p.endswith("/"):
+            segs = p.rstrip("/").split("/")
+            dir_parts = parts[:-1]
+            n = len(segs)
+            if any(dir_parts[i : i + n] == segs for i in range(len(dir_parts) - n + 1)):
+                return True
+        elif "/" in p:
+            if normalized == p or normalized.startswith(p + "/"):
+                return True
+        elif "." in p:
+            if parts[-1].endswith(p):
+                return True
+        else:
+            if any(part == p for part in parts):
+                return True
+
+    return False
+
+
+def main() -> int:
+    """Entry point for changelog-gate hook.
+
+    Returns:
+        0 if pass, 1 if fail (source changed without CHANGELOG update, or
+        FORMAT_CHECK violations when that opt-in check is enabled).
+    """
+    # Piped stdout on a legacy-code-page console (pre-commit always pipes
+    # hook stdout) would raise UnicodeEncodeError echoing non-ASCII
+    # violation lines — mirror stderr's backslashreplace default here.
+    if sys.stdout is not None and hasattr(sys.stdout, "reconfigure"):
+        try:
+            sys.stdout.reconfigure(errors="backslashreplace")
+        except (ValueError, OSError):
+            pass
+
+    if os.environ.get("SKIP_CHANGELOG_GATE", "").lower() in ("1", "true", "yes"):
+        print("changelog-gate: SKIPPED (SKIP_CHANGELOG_GATE=1)")
+        return 0
+
+    config = load_gate_config()
+
+    try:
+        staged = get_staged_files()
+    except (OSError, RuntimeError, subprocess.TimeoutExpired):
+        # OSError covers FileNotFoundError (git missing) + PermissionError
+        # (git present but not executable / Windows ACL denial).
+        return 1
+
+    if not staged:
+        print("changelog-gate: no staged files")
+        return 0
+
+    # FORMAT_CHECK (opt-in): validate the STAGED CHANGELOG.md before any
+    # source-file logic below. Pinned insertion point — a CHANGELOG-only
+    # commit (release cuts) or a src+CHANGELOG batch with a broken changelog
+    # must not slip through the early exits underneath (checking after the
+    # "CHANGELOG staged -> PASS" branch would disable the check exactly
+    # where it is most needed).
+    if config.get("FORMAT_CHECK") == VALID_FORMAT_CHECK and "CHANGELOG.md" in staged:
+        try:
+            blob = read_staged_blob()
+        except (OSError, RuntimeError, subprocess.TimeoutExpired) as e:
+            print(
+                f"changelog-gate: ERROR - cannot read staged CHANGELOG.md: {e}",
+                file=sys.stderr,
+            )
+            return 1
+        if len(blob) > _MAX_STAGED_BLOB_CHARS:
+            print(
+                f"changelog-gate: FAIL - staged CHANGELOG.md is {len(blob)}"
+                f" characters, over the {_MAX_STAGED_BLOB_CHARS} scope guard"
+                " limit; refusing to validate an oversized blob"
+            )
+            print(
+                "  Fix: keep versions in the changelog (git history carries"
+                " the details), or review and split the file before enabling"
+                " FORMAT_CHECK on this repository"
+            )
+            return 1
+        if "\ufffd" in blob:
+            # errors="replace" keeps the decode alive; a replacement char
+            # means the staged bytes were not valid UTF-8 (e.g. ANSI/GBK
+            # save) - headings survive, so the format check would otherwise
+            # PASS and the mojibake would enter history silently. A typed
+            # literal U+FFFD fails the same way (fail-closed either way).
+            print(
+                "changelog-gate: FAIL - staged CHANGELOG.md contains U+FFFD"
+                " replacement characters (invalid UTF-8 bytes, or a typed"
+                " replacement char) - check the file encoding or remove"
+                " the character before committing"
+            )
+            return 1
+        violations = validate_changelog_format(blob)
+        if violations:
+            print(
+                "changelog-gate: FAIL - changelog format violations"
+                f" (FORMAT_CHECK={VALID_FORMAT_CHECK})"
+            )
+            for message in violations[:5]:
+                print(f"  {message}")
+            if len(violations) > 5:
+                print(f"  ... and {len(violations) - 5} more")
+            print(
+                "  Fix: Keep a Changelog categories and `## [X.Y.Z] - YYYY-MM-DD`"
+                " dates in Unreleased + the latest version section"
+            )
+            print(
+                "  Judged against the STAGED copy - after fixing,"
+                " run: git add CHANGELOG.md"
+            )
+            return 1
+
+    runtime_pats = config.get("RUNTIME_PATTERNS") or "."
+    exclude_pats = config.get("EXCLUDE_PATTERNS") or ""
+
+    # Find source files (matching RUNTIME_PATTERNS, not excluded, not CHANGELOG)
+    source_files = [
+        f
+        for f in staged
+        if f != "CHANGELOG.md"
+        and matches_patterns(f, runtime_pats)
+        and not matches_patterns(f, exclude_pats)
+    ]
+
+    if not source_files:
+        print("changelog-gate: no source file changes")
+        return 0
+
+    # Staged deletion / rename-away of CHANGELOG.md: a D row is dropped
+    # by get_staged_files' ACMR filter, and a rename's OLD path never
+    # shows in its --name-only output (only the new path does) — so next
+    # to real source changes the membership check below already FAILED,
+    # with the generic "not updated" message misdescribing destructive
+    # changelog surgery, while a CHANGELOG-only surgery batch passed via
+    # the empty-list exits above. The probe's gain is the named
+    # diagnosis. Consulted only here — with no source files staged the
+    # commit keeps today's behavior. The deletion message deliberately
+    # also says "renamed away": below git's rename-detection threshold a
+    # rename splits into D + unlinked A rows that cannot be reliably
+    # re-paired.
+    try:
+        dr_status, dr_new_path = get_changelog_dr_status()
+    except (OSError, RuntimeError, subprocess.TimeoutExpired) as e:
+        # Same failure family as the get_staged_files funnel (OSError
+        # covers git missing / not executable; RuntimeError is a non-zero
+        # git exit) — fail closed, never a raw traceback.
+        print(
+            f"changelog-gate: ERROR - cannot inspect staged deletions/renames: {e}",
+            file=sys.stderr,
+        )
+        return 1
+    if dr_status == "deleted":
+        print(
+            "changelog-gate: FAIL - CHANGELOG.md is staged as deleted"
+            " (or renamed away) while source files changed"
+        )
+        print(
+            "  Fix: restore CHANGELOG.md and stage your update,"
+            " or set SKIP_CHANGELOG_GATE=1"
+        )
+        return 1
+    if dr_status == "renamed":
+        print(
+            "changelog-gate: FAIL - CHANGELOG.md is staged as renamed away to "
+            f"{_printable_path(dr_new_path or '')} while source files changed"
+        )
+        print("  Fix: keep the changelog at CHANGELOG.md, or set SKIP_CHANGELOG_GATE=1")
+        return 1
+
+    # Check if CHANGELOG.md is staged
+    changelog_staged = "CHANGELOG.md" in staged
+    if changelog_staged:
+        print("changelog-gate: PASS (CHANGELOG.md updated)")
+        return 0
+
+    # Fail: source files changed but CHANGELOG not updated
+    print("changelog-gate: FAIL - source files changed but CHANGELOG.md not updated")
+    print(
+        f"  Changed: {', '.join(_printable_path(f) for f in source_files[:5])}",
+        end="",
+    )
+    if len(source_files) > 5:
+        print(f" ... and {len(source_files) - 5} more")
+    else:
+        print()
+    print("  Fix: update CHANGELOG.md and stage it, or set SKIP_CHANGELOG_GATE=1")
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

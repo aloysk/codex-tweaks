@@ -1,5 +1,7 @@
 # Windows UI Implementation Brief
 
+Scope note: this is the inherited four-page Windows UI brief. For the fork's proposed companion panel and capsule, use [DESIGN.md](../DESIGN.md) and the [PRD](desktop-enhancement/PRD.zh-CN.md). Preserve the native-control and thin-frontend principles here; the historical four-destination restriction does not constrain future approved companion features.
+
 Status: approved visual direction; implementation intentionally paused until Windows functionality is stable.
 
 ## Scope and mode

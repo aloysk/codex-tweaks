@@ -9,3 +9,9 @@ xcuserdata/
 *.profraw
 .DS_Store
 *.log
+
+# Checkout-local development environments and code navigation indexes.
+.venv-dev/
+.serena/
+.pre-commit-cache/
+__pycache__/

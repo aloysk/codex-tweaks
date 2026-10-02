@@ -2,3 +2,9 @@ contract/presentation-contract.json text eol=lf
 app/Sources/GeneratedPresentationContract.swift text eol=lf
 windows/CodexTweaks.Windows/Generated/PresentationContract.g.cs text eol=lf
 windows/CodexTweaks.Windows/Generated/PresentationResources.xaml text eol=lf
+
+# Development hook infrastructure uses LF on every platform.
+.pre-commit*.yaml text eol=lf
+.editorconfig text eol=lf
+.githooks/* text eol=lf
+scripts/*.py text eol=lf
