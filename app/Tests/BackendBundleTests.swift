@@ -2,6 +2,15 @@ import Foundation
 import XCTest
 
 final class BackendBundleTests: XCTestCase {
+    func testBundledBackendIncludesThirdPartyNotices() throws {
+        let appBundle = try BuiltAppBundle.load(for: Self.self)
+        let url = try XCTUnwrap(appBundle.url(forResource: "THIRD-PARTY-NOTICES", withExtension: "txt"))
+        let notices = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertTrue(notices.contains("golang.org/x/image v0.46.0"))
+        XCTAssertTrue(notices.contains("Copyright 2009 The Go Authors."))
+        XCTAssertTrue(notices.contains("github.com/gorilla/websocket v1.5.3"))
+    }
+
     func testDebugAppUsesAnIsolatedBundleIdentifier() throws {
         let appBundle = try BuiltAppBundle.load(for: Self.self)
         let configuration = appBundle.bundleURL.deletingLastPathComponent().lastPathComponent

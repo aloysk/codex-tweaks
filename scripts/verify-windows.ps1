@@ -202,6 +202,9 @@ foreach ($rid in $RuntimeIdentifiers) {
     if (-not (Test-Path $xamlResources -PathType Leaf)) {
         throw "WinUI XAML resource index is missing: $rid"
     }
+    if (-not (Test-Path (Join-Path $publish 'THIRD-PARTY-NOTICES.txt') -PathType Leaf)) {
+        throw "Go backend third-party notices are missing: $rid"
+    }
     if (-not (Test-Path $appIcon -PathType Leaf)) {
         throw "Windows application icon is missing: $rid"
     }

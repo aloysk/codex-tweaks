@@ -45,6 +45,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Content Include="..\..\THIRD-PARTY-NOTICES.txt" Link="THIRD-PARTY-NOTICES.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
     <Content Remove="Assets\CodexTweaks.ico;Assets\CodexTweaks.png" />
     <Content Include="Assets\CodexTweaks.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

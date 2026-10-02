@@ -14,26 +14,12 @@ import (
 	"time"
 )
 
-const packagedCodexPowerShell = `$ErrorActionPreference = 'SilentlyContinue'
-$package = Get-AppxPackage -Name 'OpenAI.Codex' | Sort-Object Version -Descending | Select-Object -First 1
-if ($null -ne $package) {
-    $application = ($package | Get-AppxPackageManifest).Package.Applications.Application |
-        Where-Object { $_.Executable -match '(^|[\\/])ChatGPT[.]exe$' } |
-        Select-Object -First 1
-    if ($null -eq $application) {
-        $application = ($package | Get-AppxPackageManifest).Package.Applications.Application |
-            Where-Object { $_.Executable } |
-            Select-Object -First 1
-    }
-    if ($null -ne $application) {
-        Write-Output ($package.PackageFamilyName + '!' + $application.Id)
-    }
-}`
-
 type windowsPackageActivator func(appUserModelID, arguments string) (uint32, error)
 
 type windowsPlatform struct {
 	runner            CommandRunner
+	observeProcesses  func(context.Context) (windowsProcessObservation, error)
+	registeredPackage func(context.Context) (windowsRegisteredCodex, error)
 	activatePackaged  windowsPackageActivator
 	restoreNotifyIcon func(context.Context, codexNotifyIconTarget) error
 	repairLifetime    context.Context
@@ -51,7 +37,7 @@ func NewPlatform(runner CommandRunner) Platform {
 	if runner == nil {
 		runner = SystemCommandRunner{}
 	}
-	return &windowsPlatform{runner: runner}
+	return &windowsPlatform{runner: runner, observeProcesses: readNativeWindowsCodexObservation, registeredPackage: readRegisteredWindowsCodex}
 }
 
 func (p *windowsPlatform) IsCodexRunning(ctx context.Context) (bool, error) {
@@ -185,24 +171,14 @@ func (*windowsPlatform) locateUnpackagedCodex() string {
 }
 
 func (p *windowsPlatform) locatePackagedCodex(ctx context.Context) string {
-	result, err := p.runner.Run(
-		ctx,
-		"powershell.exe",
-		[]string{"-NoProfile", "-NonInteractive", "-Command", packagedCodexPowerShell},
-		"",
-		environmentSlice(environmentMap()),
-	)
-	if err != nil || result.Status != 0 {
+	if p.registeredPackage == nil {
 		return ""
 	}
-	for _, line := range strings.Split(result.Output, "\n") {
-		candidate := strings.TrimSpace(strings.TrimPrefix(line, "\ufeff"))
-		lowercase := strings.ToLower(candidate)
-		if strings.HasPrefix(lowercase, "openai.codex_") && strings.Contains(candidate, "!") && !strings.ContainsAny(candidate, " \t") {
-			return candidate
-		}
+	pkg, err := p.registeredPackage(ctx)
+	if err != nil {
+		return ""
 	}
-	return ""
+	return pkg.ApplicationID
 }
 
 func waitContext(ctx context.Context, duration time.Duration) error {

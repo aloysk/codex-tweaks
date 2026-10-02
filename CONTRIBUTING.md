@@ -1,6 +1,6 @@
 # Development
 
-Start with the [architecture](ARCHITECTURE.md), [product requirements](docs/desktop-enhancement/PRD.zh-CN.md) and [implementation gates](docs/desktop-enhancement/IMPLEMENTATION.md). Current fork work prepares the companion product and developer infrastructure; it does not yet deliver new runtime features.
+Start with the [architecture](ARCHITECTURE.md), [product requirements](docs/desktop-enhancement/PRD.zh-CN.md) and [implementation gates](docs/desktop-enhancement/IMPLEMENTATION.md). The fork implements the companion runtime foundation and a native appearance panel; remaining runtime and distribution acceptance is recorded in the implementation plan.
 
 ## Checkout and hooks
 
@@ -40,7 +40,7 @@ python scripts/check-dev.py --profile windows
 python scripts/check-dev.py --profile macos
 ```
 
-Each profile checks Python, Git, Go against `backend/go.mod`, and Node/npm/npx. Node is required by offline DOM fixtures; npm/npx support optional package builds. `windows` additionally checks .NET and Windows SDK requirements from the project; `macos` checks Xcode and xcodegen. Use native profiles on their matching host. Missing optional CodeGraph/Serena CLIs are informational; MCP availability is not inferred from PATH. Preflight fails if a `CODEX_*LIVE*` or `CODEX_*INTEGRATION*` environment flag equals `1`. It does not install software, change settings or run tests, and a pass establishes tool readiness only.
+Each profile checks Python, Git, Go against `backend/go.mod`, Node/npm/npx and an existing Chrome, Edge or Chromium executable. Node runs offline DOM fixtures; a headless browser verifies real CSS, geometry and image decoding against synthetic content in a temporary profile. These tests never open the official app or use a real browser profile, account or session. Set `CODEX_TWEAKS_TEST_BROWSER` to an executable outside the usual installation paths. Missing browsers fail the tests instead of silently skipping them. npm/npx support optional package builds. `windows` additionally checks .NET and Windows SDK requirements from the project; `macos` checks Xcode and xcodegen. Use native profiles on their matching host. Missing optional CodeGraph/Serena CLIs are informational; MCP availability is not inferred from PATH. Preflight fails if a `CODEX_*LIVE*` or `CODEX_*INTEGRATION*` environment flag equals `1`. It does not install software, change settings or run tests, and a pass establishes tool readiness only.
 
 For shared Go or contract work, from `backend/`:
 

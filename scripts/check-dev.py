@@ -77,7 +77,33 @@ def core() -> int:
         else:
             print(f"PASS {name}: {output.splitlines()[0]}")
     print("INFO Node runs offline DOM fixtures; npm/npx are used by optional package builds.")
+    failures += browser()
     return failures
+
+
+def browser() -> int:
+    configured = os.getenv("CODEX_TWEAKS_TEST_BROWSER")
+    if configured:
+        candidates = [Path(configured)]
+    elif sys.platform == "win32":
+        candidates = [
+            Path(os.getenv("PROGRAMFILES", "")) / "Google/Chrome/Application/chrome.exe",
+            Path(os.getenv("PROGRAMFILES(X86)", "")) / "Microsoft/Edge/Application/msedge.exe",
+            Path(os.getenv("LOCALAPPDATA", "")) / "Google/Chrome/Application/chrome.exe",
+        ]
+    elif sys.platform == "darwin":
+        candidates = [Path("/Applications") / name / "Contents/MacOS" / executable for name, executable in (
+            ("Google Chrome.app", "Google Chrome"), ("Microsoft Edge.app", "Microsoft Edge"), ("Chromium.app", "Chromium"),
+        )]
+    else:
+        candidates = [Path(path) for name in ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser")
+                      if (path := shutil.which(name))]
+    for candidate in candidates:
+        if candidate.is_file():
+            print(f"PASS Headless test browser: {candidate}")
+            return 0
+    print("FAIL Headless test browser: install Chrome/Edge/Chromium or set CODEX_TWEAKS_TEST_BROWSER to its executable")
+    return 1
 
 
 def windows() -> int:

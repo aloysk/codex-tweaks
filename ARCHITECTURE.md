@@ -2,7 +2,7 @@
 
 This fork is a companion to the official Codex desktop app. The official window remains the place to chat, edit, approve and run work. Our native control panel, optional floating capsule and selected renderer enhancements surround that workflow. We do not patch, repack or replace the official executable or application bundle.
 
-The repository currently contains the upstream application plus the fork's requirements and development infrastructure. New companion features described below are planned, not implemented. Requirements and acceptance criteria live in the [PRD](docs/desktop-enhancement/PRD.zh-CN.md); this document owns component boundaries, directory placement and naming.
+The shared runtime foundation and isolated companion identity are implemented. The native control panel now includes an appearance page backed by Go settings and a narrow renderer adapter; task metrics and the capsule remain planned. Requirements and acceptance criteria live in the [PRD](docs/desktop-enhancement/PRD.zh-CN.md); this document owns component boundaries, directory placement and naming.
 
 ## Existing system
 
@@ -45,6 +45,8 @@ The existing package API v3 supplies activation, cleanup, optional Node executio
 
 Runtime collaborators are narrow interfaces: `Platform` observes or explicitly opens the official app, and `CDPRuntime` binds a verified process identity before renderer effects. Ordinary Controller/RPC tests inject synthetic implementations. Cancellation, page cleanup and listener ownership are separate facts; [runtime foundation](docs/development/runtime-foundation.md) defines their diagnostics and lifecycle contract.
 
+`AppearanceRuntime` is an optional narrow collaborator beside `CDPRuntime`. Its fixed target, revision and owned lease confirm appearance changes without restarting other packages. Go owns saved settings, transient previews and image validation/storage; native pages keep only an editable draft and explicit file selection. The renderer receives bounded values and an owned image data URL, never a user file path. Reading layouts remain unavailable until their ordinary-prose scope is verified; no shared transcript width override is assumed safe.
+
 ## Placement of new work
 
 Use existing seams first. Add files only when their feature is implemented; the preparation phase does not create empty module trees.
@@ -73,7 +75,7 @@ Stopping injection, confirming page cleanup and closing the official process's d
 
 ## Naming and ownership
 
-- Preserve existing `CodexTweaks` namespaces and upstream paths during preparation. A future distribution name, package ID, data directory or update-feed change is a migration, not a cosmetic rename.
+- Preserve existing `CodexTweaks` internal namespaces and source paths. The installed companion identity and data roots come from Go's `identity.go` and generated application identity; later persisted renames are migrations.
 - Use domain names such as `ThemePreset`, `UsageSnapshot`, `ConnectionStatus` and `CapsuleWindow` when the corresponding concept exists. Follow neighboring Go file names, native PascalCase types and lower-kebab-case package/document names.
 - Keep branch names, PR numbers, development phases and agent identities out of production symbols and persisted identifiers.
 - Keep the PRD authoritative for intended product behavior, this file for structure, [DESIGN.md](DESIGN.md) for visual mapping and [CONTRIBUTING.md](CONTRIBUTING.md) for developer commands. Research documents describe their observed snapshot and do not override newer decisions.
@@ -82,4 +84,4 @@ Stopping injection, confirming page cleanup and closing the official process's d
 
 Windows is the first platform for the new companion UX. Shared Go/contract changes still require macOS compatibility and generated-source checks. A Windows-only surface must be represented as an explicit capability, not an unsupported button on macOS.
 
-Before distributing a fork installer, isolate its application/package identity, data root, update repository, signing and uninstall ownership together. The inherited source still points at upstream update/package identifiers. Current CI builds are verification artifacts; they are not permission to install over a daily upstream installation. Use the [implementation gates](docs/desktop-enhancement/IMPLEMENTATION.md) for runtime acceptance and [CONTRIBUTING.md](CONTRIBUTING.md) for build checks.
+The application/package identity, data roots and update repository are isolated from upstream. Automatic application updates remain disabled until a companion feed and signing are configured; installation and uninstall acceptance remains a later gate. Current CI builds are verification artifacts. Use the [implementation gates](docs/desktop-enhancement/IMPLEMENTATION.md) for runtime acceptance and [CONTRIBUTING.md](CONTRIBUTING.md) for build checks.

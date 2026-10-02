@@ -10,6 +10,7 @@ final class AppModel: ObservableObject {
 
     @Published private(set) var status: Status = .starting
     @Published private(set) var presentation: BackendPresentationContract?
+    @Published private(set) var appearance: BackendAppearanceSnapshot?
     @Published private(set) var logText = ""
     @Published private(set) var isAuthoringPromptCopied = false
     @Published private(set) var tweakPackages: [TweakPackage] = []
@@ -82,12 +83,65 @@ final class AppModel: ObservableObject {
     private var hasStarted = false
     private var isStoppingBackend = false
     private var hasBackendConnectionFailed = false
+    private var appearanceCommandVersion: UInt64 = 0
     private var promptCopyResetTask: Task<Void, Never>?
 
     private init() {}
 
     func text(_ key: PresentationTextKey, _ replacements: [String: String] = [:]) -> String {
         PresentationText.resolve(key, contract: presentation, replacements: replacements)
+    }
+
+    func appearanceText(_ key: String, _ replacements: [String: String] = [:]) -> String {
+        var value = presentation?.text[key]
+            ?? PresentationTextKey(rawValue: key).map { text($0) }
+            ?? text(.appearanceRequestFailed)
+        for (name, replacement) in replacements {
+            value = value.replacingOccurrences(of: "{\(name)}", with: replacement)
+        }
+        return value
+    }
+
+    var canSendAppearanceCommands: Bool {
+        appearance != nil && !isStoppingBackend && !hasBackendConnectionFailed
+    }
+
+    func previewAppearance(_ settings: BackendAppearanceSettings) async throws -> BackendAppearanceSnapshot {
+        try await appearanceCommand("appearance.preview", params: AppearanceSettingsParameter(settings: settings))
+    }
+
+    func applyAppearance(_ settings: BackendAppearanceSettings) async throws -> BackendAppearanceSnapshot {
+        try await appearanceCommand("appearance.apply", params: AppearanceSettingsParameter(settings: settings))
+    }
+
+    func cancelAppearancePreview() async throws -> BackendAppearanceSnapshot {
+        try await appearanceCommand("appearance.cancelPreview", params: NoParameter())
+    }
+
+    func restoreNativeAppearance() async throws -> BackendAppearanceSnapshot {
+        try await appearanceCommand("appearance.restoreNative", params: NoParameter())
+    }
+
+    func importAppearanceImage(from url: URL) async throws -> BackendAppearanceImageResult {
+        guard canSendAppearanceCommands else { throw BackendClientError.notRunning }
+        let accessing = url.startAccessingSecurityScopedResource()
+        defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+        return try await backend.request(
+            method: "appearance.importImage", params: AppearanceImageParameter(path: url.path)
+        )
+    }
+
+    private func appearanceCommand<Params: Encodable & Sendable>(
+        _ method: String, params: Params
+    ) async throws -> BackendAppearanceSnapshot {
+        guard canSendAppearanceCommands else { throw BackendClientError.notRunning }
+        appearanceCommandVersion &+= 1
+        let version = appearanceCommandVersion
+        let result: BackendAppearanceSnapshot = try await backend.request(method: method, params: params)
+        if version == appearanceCommandVersion, canSendAppearanceCommands {
+            appearance = result
+        }
+        return result
     }
 
     var tokens: BackendPresentationTokens {
@@ -502,6 +556,7 @@ final class AppModel: ObservableObject {
             return
         }
         presentation = snapshot.presentation
+        appearance = snapshot.appearance
         isApplyingSnapshot = true
         isEnabled = snapshot.enabled
         isGPUAccelerationDisabled = snapshot.disableGPUAcceleration

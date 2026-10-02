@@ -122,7 +122,8 @@ func (c *Controller) Refresh() {
 	observation, err := c.platform.ObserveCodex(ctx)
 	if err != nil {
 		c.cancelNodeActivity()
-		_ = c.cdp.BindTarget(ctx, nil)
+		c.suspendAppearanceForDetach()
+		c.completeAppearanceDetach(c.cdp.BindTarget(ctx, nil))
 		if c.nodeRuntime != nil {
 			_ = c.nodeRuntime.StopAllContext(ctx)
 		}
@@ -134,7 +135,9 @@ func (c *Controller) Refresh() {
 		c.mu.Unlock()
 		return
 	}
-	if c.runtime.Target != nil && (observation.Target == nil || !c.runtime.Target.Equal(*observation.Target)) {
+	targetChanged := c.runtime.Target != nil && (observation.Target == nil || !c.runtime.Target.Equal(*observation.Target))
+	if targetChanged {
+		c.invalidateAppearanceLocked()
 		if c.nodeCancel != nil {
 			c.nodeCancel()
 		}
@@ -144,7 +147,8 @@ func (c *Controller) Refresh() {
 	c.mu.Unlock()
 	if !observation.Running {
 		c.cancelNodeActivity()
-		_ = c.cdp.BindTarget(ctx, nil)
+		c.suspendAppearanceForDetach()
+		c.completeAppearanceDetach(c.cdp.BindTarget(ctx, nil))
 		if c.nodeRuntime != nil {
 			_ = c.nodeRuntime.StopAllContext(ctx)
 		}
@@ -153,7 +157,8 @@ func (c *Controller) Refresh() {
 	}
 	if observation.Target == nil {
 		c.cancelNodeActivity()
-		_ = c.cdp.BindTarget(ctx, nil)
+		c.suspendAppearanceForDetach()
+		c.completeAppearanceDetach(c.cdp.BindTarget(ctx, nil))
 		if c.nodeRuntime != nil {
 			_ = c.nodeRuntime.StopAllContext(ctx)
 		}
@@ -162,7 +167,8 @@ func (c *Controller) Refresh() {
 	}
 	if !observation.ListenerOwned {
 		c.cancelNodeActivity()
-		_ = c.cdp.BindTarget(ctx, nil)
+		c.suspendAppearanceForDetach()
+		c.completeAppearanceDetach(c.cdp.BindTarget(ctx, nil))
 		if c.nodeRuntime != nil {
 			_ = c.nodeRuntime.StopAllContext(ctx)
 		}
@@ -171,8 +177,14 @@ func (c *Controller) Refresh() {
 	}
 	if err := c.cdp.BindTarget(ctx, observation.Target); err != nil {
 		c.cancelNodeActivity()
+		if targetChanged {
+			c.completeAppearanceDetach(err)
+		}
 		c.publishRuntimeStatus(epoch, AppStatus{Kind: StatusError, Message: stringPointer(err.Error())})
 		return
+	}
+	if targetChanged {
+		c.completeAppearanceDetach(nil)
 	}
 	c.mu.Lock()
 	if c.runtimeEpoch != epoch || !c.config.Enabled || c.shuttingDown || ctx.Err() != nil {
@@ -207,6 +219,10 @@ func (c *Controller) Refresh() {
 	if err != nil {
 		c.cancelNodeActivity()
 	}
+	if err != nil || result.SuccessCount == 0 {
+		c.suspendAppearanceForDetach()
+		c.completeAppearanceDetach(c.cdp.BindTarget(ctx, nil))
+	}
 	c.mu.Lock()
 	if c.shuttingDown || !c.config.Enabled || c.runtimeEpoch != epoch {
 		c.mu.Unlock()
@@ -234,6 +250,9 @@ func (c *Controller) Refresh() {
 		c.status = AppStatus{Kind: StatusError, Message: stringPointer("页面没有确认增强结果")}
 	}
 	c.mu.Unlock()
+	if err == nil && result.SuccessCount > 0 {
+		c.refreshAppearance(ctx, epoch)
+	}
 	c.emit()
 }
 
@@ -324,6 +343,16 @@ func (c *Controller) stopRuntimeLocked(ctx context.Context) error {
 	}
 	c.runtime.Recovery = recovery
 	c.disabledCleanupCompleted = failure == nil && result.Complete()
+	if c.disabledCleanupCompleted {
+		c.appearanceTargetID = ""
+		c.appearancePreview = nil
+		c.appearanceStatus = "native"
+		if !appearanceSettingsNative(c.config.Appearance) {
+			c.appearanceStatus = "unavailable"
+		}
+	} else if c.appearanceTargetID != "" {
+		c.appearanceStatus = "recoveryPending"
+	}
 	c.packageRuntimeErrors = map[string]string{}
 	if failure != nil {
 		c.status = AppStatus{Kind: StatusRecoveryPending, Message: stringPointer(failure.Error())}

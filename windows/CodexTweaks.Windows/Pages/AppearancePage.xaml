@@ -1,0 +1,59 @@
+<Page
+    x:Class="CodexTweaks.Windows.Pages.AppearancePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Background="Transparent">
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled" HorizontalScrollMode="Disabled"
+                  VerticalScrollBarVisibility="Auto" VerticalScrollMode="Enabled">
+        <Grid Padding="{StaticResource CodexPagePaddingThickness}">
+            <StackPanel Style="{StaticResource CodexPageContentStyle}">
+                <StackPanel Style="{StaticResource CodexPageHeaderStyle}">
+                    <TextBlock x:Name="PageTitle" Style="{StaticResource CodexPageTitleTextStyle}" />
+                    <TextBlock x:Name="PageSubtitle" Style="{StaticResource CodexPageSubtitleTextStyle}" />
+                </StackPanel>
+                <Border Style="{StaticResource CodexCardStyle}">
+                    <StackPanel Spacing="6">
+                        <TextBlock x:Name="StatusTitle" Style="{StaticResource CodexSectionTitleTextStyle}" />
+                        <TextBlock x:Name="TargetText" Style="{StaticResource CodexCaptionTextStyle}" />
+                        <TextBlock x:Name="StatusDetail" Style="{StaticResource CodexBodyTextStyle}" />
+                    </StackPanel>
+                </Border>
+                <StackPanel Style="{StaticResource CodexSectionStackStyle}">
+                    <ComboBox x:Name="ThemePicker" HorizontalAlignment="Stretch" SelectionChanged="Option_SelectionChanged" />
+                    <ComboBox x:Name="LayoutPicker" HorizontalAlignment="Stretch" SelectionChanged="Option_SelectionChanged" />
+                    <TextBlock x:Name="LayoutHint" Style="{StaticResource CodexCaptionTextStyle}" />
+                    <Border Style="{StaticResource CodexDividerStyle}" />
+                    <ComboBox x:Name="BackgroundPicker" HorizontalAlignment="Stretch" SelectionChanged="Option_SelectionChanged" />
+                    <TextBox x:Name="ColorInput" MaxLength="7" TextChanged="ColorInput_TextChanged" />
+                    <StackPanel Spacing="6">
+                        <TextBlock x:Name="ImageTitle" Style="{StaticResource CodexBodyTextStyle}" />
+                        <Button x:Name="ChooseImageButton" Click="ChooseImage_Click" />
+                        <TextBlock x:Name="ImageInfo" Style="{StaticResource CodexCaptionTextStyle}" />
+                        <TextBlock x:Name="ImageHint" Style="{StaticResource CodexCaptionTextStyle}" />
+                    </StackPanel>
+                    <StackPanel Spacing="4">
+                        <TextBlock x:Name="OpacityTitle" Style="{StaticResource CodexBodyTextStyle}" />
+                        <Slider x:Name="OpacitySlider" StepFrequency="1" ValueChanged="OpacitySlider_ValueChanged" />
+                        <TextBlock x:Name="OpacityValue" Style="{StaticResource CodexCaptionTextStyle}" />
+                    </StackPanel>
+                </StackPanel>
+                <TextBlock x:Name="DraftHint" Style="{StaticResource CodexCaptionTextStyle}" />
+                <TextBlock x:Name="RequestError" Foreground="{ThemeResource SystemFillColorCriticalBrush}" TextWrapping="Wrap" />
+                <Grid ColumnSpacing="8" RowSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Button x:Name="PreviewButton" HorizontalAlignment="Stretch" Click="Preview_Click" />
+                    <Button x:Name="ApplyButton" Grid.Column="1" HorizontalAlignment="Stretch" Style="{StaticResource AccentButtonStyle}" Click="Apply_Click" />
+                    <Button x:Name="CancelButton" Grid.Row="1" HorizontalAlignment="Stretch" Click="Cancel_Click" />
+                    <Button x:Name="RestoreButton" Grid.Row="1" Grid.Column="1" HorizontalAlignment="Stretch" Click="Restore_Click" />
+                </Grid>
+            </StackPanel>
+        </Grid>
+    </ScrollViewer>
+</Page>

@@ -36,6 +36,27 @@ func TestServerPingAndPreInitializationGuard(t *testing.T) {
 	}
 }
 
+func TestAppearanceRPCRejectsInvalidDraftWithoutChangingSavedSettings(t *testing.T) {
+	session := newAppearanceRPCSession(t, &isolatedCDP{}, false)
+	settings := core.DefaultAppearanceSettings()
+	settings.Theme, settings.BackgroundMode, settings.SolidColor = "mint", "solid", "invalid"
+	session.send(t, 2, "appearance.preview", map[string]any{"settings": settings})
+	if frame := session.await(t, 2); frame.Error == nil || frame.Error.Message != "appearance.error.invalidSettings" {
+		t.Fatalf("invalid draft accepted: %#v", frame)
+	}
+	session.send(t, 3, "getState", nil)
+	appearance := session.await(t, 3).Result["appearance"].(map[string]any)
+	saved := appearance["saved"].(map[string]any)
+	if saved["theme"] != "native" || saved["solidColor"] != "#DEF3E5" || appearance["preview"] != nil || appearance["errorTextKey"] != "appearance.error.invalidSettings" {
+		t.Fatalf("invalid draft changed saved/native state: %#v", appearance)
+	}
+	session.send(t, 4, "shutdown", nil)
+	if frame := session.await(t, 4); frame.Error != nil {
+		t.Fatalf("shutdown: %#v", frame.Error)
+	}
+	session.finish(t)
+}
+
 func TestServerInitializesControllerWithoutBackgroundSideEffects(t *testing.T) {
 	root := t.TempDir()
 	params := `{

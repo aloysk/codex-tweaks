@@ -110,6 +110,7 @@ type CDPService struct {
 	owner            string
 	epoch            uint64
 	stopped          bool
+	appearanceTarget *attemptedAppearanceTarget
 }
 
 func NewCDPService(logger *Logger, verifier ...TargetIdentityVerifier) *CDPService {
@@ -154,6 +155,11 @@ func (s *CDPService) BindTarget(ctx context.Context, identity *CodexProcessIdent
 		return err
 	}
 	defer s.mu.Unlock()
+	if s.boundTarget != nil && (identity == nil || !s.boundTarget.Equal(*identity)) {
+		if err := s.cleanupAppearanceBindingLocked(ctx); err != nil {
+			return err
+		}
+	}
 	if identity == nil {
 		s.boundTarget = nil
 		s.stopped = true

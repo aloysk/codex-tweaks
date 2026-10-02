@@ -2,7 +2,7 @@
 import Foundation
 
 enum BackendProtocolContract {
-    static let protocolVersion = 11
+    static let protocolVersion = 12
     static let shutdownGraceSeconds: TimeInterval = 5
 }
 
@@ -25,6 +25,62 @@ enum PresentationTextKey: String, CaseIterable, Sendable {
     case appBackendTimedOut = "app.backendTimedOut"
     case appName = "app.name"
     case appProtocolMismatch = "app.protocolMismatch"
+    case appearanceApply = "appearance.apply"
+    case appearanceBackground = "appearance.background"
+    case appearanceBackgroundLocalImage = "appearance.background.localImage"
+    case appearanceBackgroundOff = "appearance.background.off"
+    case appearanceBackgroundSolid = "appearance.background.solid"
+    case appearanceBusy = "appearance.busy"
+    case appearanceCancelPreview = "appearance.cancelPreview"
+    case appearanceChooseImage = "appearance.chooseImage"
+    case appearanceErrorAmbiguousTarget = "appearance.error.ambiguousTarget"
+    case appearanceErrorAssetUnavailable = "appearance.error.assetUnavailable"
+    case appearanceErrorCancelled = "appearance.error.cancelled"
+    case appearanceErrorImageDimensions = "appearance.error.imageDimensions"
+    case appearanceErrorImageRead = "appearance.error.imageRead"
+    case appearanceErrorImageSize = "appearance.error.imageSize"
+    case appearanceErrorImageType = "appearance.error.imageType"
+    case appearanceErrorImageWrite = "appearance.error.imageWrite"
+    case appearanceErrorInvalidSettings = "appearance.error.invalidSettings"
+    case appearanceErrorPersistence = "appearance.error.persistence"
+    case appearanceErrorRenderer = "appearance.error.renderer"
+    case appearanceErrorUnavailable = "appearance.error.unavailable"
+    case appearanceErrorUnsupportedLayout = "appearance.error.unsupportedLayout"
+    case appearanceImage = "appearance.image"
+    case appearanceImageImported = "appearance.imageImported"
+    case appearanceImageLimits = "appearance.imageLimits"
+    case appearanceImageNone = "appearance.imageNone"
+    case appearanceImageSelected = "appearance.imageSelected"
+    case appearanceLayout = "appearance.layout"
+    case appearanceLayoutComfortable = "appearance.layout.comfortable"
+    case appearanceLayoutCompact = "appearance.layout.compact"
+    case appearanceLayoutNative = "appearance.layout.native"
+    case appearanceLayoutUnavailable = "appearance.layoutUnavailable"
+    case appearanceLocalDraft = "appearance.localDraft"
+    case appearanceOpacityValue = "appearance.opacityValue"
+    case appearanceOverlayOpacity = "appearance.overlayOpacity"
+    case appearancePreview = "appearance.preview"
+    case appearancePreviewOnly = "appearance.previewOnly"
+    case appearanceRequestFailed = "appearance.requestFailed"
+    case appearanceRestoreNative = "appearance.restoreNative"
+    case appearanceSavedSettings = "appearance.savedSettings"
+    case appearanceSolidColor = "appearance.solidColor"
+    case appearanceStatusApplied = "appearance.status.applied"
+    case appearanceStatusNative = "appearance.status.native"
+    case appearanceStatusPreview = "appearance.status.preview"
+    case appearanceStatusRecoveryPending = "appearance.status.recoveryPending"
+    case appearanceStatusUnavailable = "appearance.status.unavailable"
+    case appearanceStatusUnsaved = "appearance.status.unsaved"
+    case appearanceStatusUnsupported = "appearance.status.unsupported"
+    case appearanceSubtitle = "appearance.subtitle"
+    case appearanceTarget = "appearance.target"
+    case appearanceTargetUnconfirmed = "appearance.targetUnconfirmed"
+    case appearanceTheme = "appearance.theme"
+    case appearanceThemeDark = "appearance.theme.dark"
+    case appearanceThemeMint = "appearance.theme.mint"
+    case appearanceThemeNative = "appearance.theme.native"
+    case appearanceTitle = "appearance.title"
+    case appearanceUnsupportedOption = "appearance.unsupportedOption"
     case commonCancel = "common.cancel"
     case commonClose = "common.close"
     case commonConfirm = "common.confirm"
@@ -56,6 +112,7 @@ enum PresentationTextKey: String, CaseIterable, Sendable {
     case logsTitle = "logs.title"
     case menuQuit = "menu.quit"
     case menuShow = "menu.show"
+    case navAppearance = "nav.appearance"
     case navLogs = "nav.logs"
     case navOverview = "nav.overview"
     case navPackages = "nav.packages"
@@ -407,6 +464,60 @@ struct BackendShutdownResult: Codable, Equatable, Sendable {
     let shutdown: Bool
 }
 
+struct BackendAppearanceSettings: Codable, Equatable, Sendable {
+    let theme: String
+    let readingLayout: String
+    let backgroundMode: String
+    let solidColor: String
+    let imageAssetId: String?
+    let overlayOpacity: Int
+}
+
+struct BackendAppearanceOption: Codable, Equatable, Sendable {
+    let value: String
+    let textKey: String
+    let supported: Bool
+}
+
+struct BackendAppearanceOptions: Codable, Equatable, Sendable {
+    let themes: [BackendAppearanceOption]
+    let readingLayouts: [BackendAppearanceOption]
+    let backgroundModes: [BackendAppearanceOption]
+    let overlayMinimum: Int
+    let overlayMaximum: Int
+}
+
+struct BackendAppearanceActions: Codable, Equatable, Sendable {
+    let preview: Bool
+    let apply: Bool
+    let cancelPreview: Bool
+    let restoreNative: Bool
+    let importImage: Bool
+}
+
+struct BackendAppearanceSnapshot: Codable, Equatable, Sendable {
+    let saved: BackendAppearanceSettings
+    let preview: BackendAppearanceSettings?
+    let status: String
+    let statusTextKey: String
+    let errorTextKey: String?
+    let targetId: String?
+    let revision: UInt64
+    let actions: BackendAppearanceActions
+    let options: BackendAppearanceOptions
+}
+
+struct BackendAppearanceImageResult: Codable, Equatable, Sendable {
+    let assetId: String
+    let width: Int
+    let height: Int
+    let format: String
+}
+
+enum GeneratedAppearanceDefaults {
+    static let settings = BackendAppearanceSettings(theme: "native", readingLayout: "native", backgroundMode: "off", solidColor: "#DEF3E5", imageAssetId: nil, overlayOpacity: 88)
+}
+
 enum GeneratedPresentationDefaults {
     static let text: [PresentationTextKey: String] = [
         .appBackendDateMalformed: "Could not parse the date returned by the Go backend: {value}",
@@ -420,6 +531,62 @@ enum GeneratedPresentationDefaults {
         .appBackendTimedOut: "The Go backend response timed out.",
         .appName: "Codex Tweaks Companion",
         .appProtocolMismatch: "The Go backend protocol version does not match.",
+        .appearanceApply: "Apply and save",
+        .appearanceBackground: "Background",
+        .appearanceBackgroundLocalImage: "Local image",
+        .appearanceBackgroundOff: "Off",
+        .appearanceBackgroundSolid: "Solid color",
+        .appearanceBusy: "Working…",
+        .appearanceCancelPreview: "Cancel preview",
+        .appearanceChooseImage: "Choose image",
+        .appearanceErrorAmbiguousTarget: "Multiple Codex windows were found. The target could not be confirmed.",
+        .appearanceErrorAssetUnavailable: "The background image is unavailable. Choose it again.",
+        .appearanceErrorCancelled: "The action was cancelled.",
+        .appearanceErrorImageDimensions: "Neither side of the image may exceed 4096 pixels.",
+        .appearanceErrorImageRead: "Could not read the image.",
+        .appearanceErrorImageSize: "The image must be no larger than 5 MiB.",
+        .appearanceErrorImageType: "Choose a static PNG, JPEG, or WebP image.",
+        .appearanceErrorImageWrite: "Could not save the image.",
+        .appearanceErrorInvalidSettings: "The appearance settings are invalid.",
+        .appearanceErrorPersistence: "Saving failed. The current preview has not been saved.",
+        .appearanceErrorRenderer: "Could not update Codex appearance.",
+        .appearanceErrorUnavailable: "Codex appearance cannot be adjusted right now.",
+        .appearanceErrorUnsupportedLayout: "This layout is currently unavailable.",
+        .appearanceImage: "Image",
+        .appearanceImageImported: "Imported {width}×{height} · {format}",
+        .appearanceImageLimits: "Static PNG, JPEG, or WebP; up to 5 MiB and 4096 pixels per side.",
+        .appearanceImageNone: "No image selected",
+        .appearanceImageSelected: "Image selected",
+        .appearanceLayout: "Layout",
+        .appearanceLayoutComfortable: "Comfortable",
+        .appearanceLayoutCompact: "Compact",
+        .appearanceLayoutNative: "Native",
+        .appearanceLayoutUnavailable: "Layout adjustments are currently unavailable.",
+        .appearanceLocalDraft: "Draft not yet sent",
+        .appearanceOpacityValue: "{value}%",
+        .appearanceOverlayOpacity: "Background overlay opacity",
+        .appearancePreview: "Preview",
+        .appearancePreviewOnly: "Preview changes have not been saved.",
+        .appearanceRequestFailed: "The action failed. Try again.",
+        .appearanceRestoreNative: "Restore native appearance",
+        .appearanceSavedSettings: "Current settings are saved.",
+        .appearanceSolidColor: "Solid color",
+        .appearanceStatusApplied: "Applied",
+        .appearanceStatusNative: "Native appearance",
+        .appearanceStatusPreview: "Previewing",
+        .appearanceStatusRecoveryPending: "Recovery pending",
+        .appearanceStatusUnavailable: "Unavailable",
+        .appearanceStatusUnsaved: "Unsaved",
+        .appearanceStatusUnsupported: "Unsupported",
+        .appearanceSubtitle: "Customize the theme and background of the official Codex app.",
+        .appearanceTarget: "Target: {target}",
+        .appearanceTargetUnconfirmed: "Codex window not yet confirmed",
+        .appearanceTheme: "Theme",
+        .appearanceThemeDark: "Dark",
+        .appearanceThemeMint: "Mint",
+        .appearanceThemeNative: "Native",
+        .appearanceTitle: "Appearance",
+        .appearanceUnsupportedOption: "This option is currently unavailable.",
         .commonCancel: "Cancel",
         .commonClose: "Close",
         .commonConfirm: "Confirm",
@@ -451,6 +618,7 @@ enum GeneratedPresentationDefaults {
         .logsTitle: "Connection and injection logs",
         .menuQuit: "Quit Codex Tweaks",
         .menuShow: "Show Codex Tweaks",
+        .navAppearance: "Appearance",
         .navLogs: "Logs",
         .navOverview: "Overview",
         .navPackages: "Packages",

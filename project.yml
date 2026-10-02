@@ -30,6 +30,7 @@ targets:
     productName: Codex Tweaks Companion
     sources:
       - path: app/Sources
+      - path: THIRD-PARTY-NOTICES.txt
       - path: app/Resources/Icons
       - path: app/Resources/Localization
       - path: app/Resources/Tweaks
@@ -62,6 +63,7 @@ targets:
     # Compile the pure Swift sources directly so XCTest never launches the app.
     sources:
       - path: app/Tests/BackendProtocolTests.swift
+      - path: app/Tests/AppearanceContractTests.swift
       - path: app/Tests/BackendClientLifecycleTests.swift
       - path: app/Tests/TestIsolationTests.swift
       - path: app/Sources/AppStatus.swift

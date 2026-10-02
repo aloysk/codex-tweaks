@@ -113,6 +113,7 @@ func (c *Controller) SetEnabled(enabled bool) error {
 		return err
 	}
 	c.runtimeEpoch++
+	c.invalidateAppearanceLocked()
 	if c.nodeCancel != nil {
 		c.nodeCancel()
 	}

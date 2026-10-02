@@ -236,6 +236,9 @@ internal sealed class BackendUpdateSnapshot
 
 internal sealed class BackendAppSnapshot
 {
+    [JsonPropertyName("appearance")]
+    public AppearanceSnapshot Appearance { get; init; } = new();
+
     [JsonPropertyName("protocolVersion")]
     public int ProtocolVersion { get; init; }
 

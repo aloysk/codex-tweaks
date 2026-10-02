@@ -54,6 +54,11 @@
                         <SymbolIcon Symbol="Home" Style="{StaticResource CodexSmallIconStyle}" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
+                <NavigationViewItem x:Name="AppearanceNavigationItem" Tag="appearance">
+                    <NavigationViewItem.Icon>
+                        <SymbolIcon Symbol="Edit" Style="{StaticResource CodexSmallIconStyle}" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
                 <NavigationViewItem x:Name="PackagesNavigationItem" Tag="packages">
                     <NavigationViewItem.Icon>
                         <SymbolIcon Symbol="Library" Style="{StaticResource CodexSmallIconStyle}" />

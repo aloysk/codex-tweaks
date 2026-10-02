@@ -23,6 +23,7 @@ public sealed partial class MainWindow : Window
     private readonly BackendClient _backend = new();
     private readonly VelopackUpdateService _velopack = new();
     private readonly OverviewPage _overviewPage;
+    private readonly AppearancePage _appearancePage;
     private readonly PackagesPage _packagesPage;
     private readonly LogsPage _logsPage;
     private readonly UpdatesPage _updatesPage;
@@ -44,6 +45,7 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
         _overviewPage = new OverviewPage();
+        _appearancePage = new AppearancePage();
         _packagesPage = new PackagesPage();
         _logsPage = new LogsPage();
         _updatesPage = new UpdatesPage();
@@ -141,6 +143,7 @@ public sealed partial class MainWindow : Window
         AppTitleText.Text = Text(PresentationTextKey.AppName);
         LoadingText.Text = Text(PresentationTextKey.OverviewConnectingDetail);
         OverviewNavigationItem.Content = Text(PresentationTextKey.NavOverview);
+        AppearanceNavigationItem.Content = Text(PresentationTextKey.NavAppearance);
         PackagesNavigationItem.Content = Text(PresentationTextKey.NavPackages);
         LogsNavigationItem.Content = Text(PresentationTextKey.NavLogs);
         UpdatesNavigationItem.Content = Text(PresentationTextKey.NavUpdates);
@@ -314,6 +317,7 @@ public sealed partial class MainWindow : Window
     {
         var item = _section switch
         {
+            "appearance" => AppearanceNavigationItem,
             "packages" => PackagesNavigationItem,
             "logs" => LogsNavigationItem,
             "updates" => UpdatesNavigationItem,
@@ -334,6 +338,7 @@ public sealed partial class MainWindow : Window
         App.Log($"Rendering {_section} XAML page.");
         Page page = _section switch
         {
+            "appearance" => _appearancePage,
             "packages" => _packagesPage,
             "logs" => _logsPage,
             "updates" => _updatesPage,
@@ -344,6 +349,9 @@ public sealed partial class MainWindow : Window
         {
             case OverviewPage overview:
                 overview.Render(this, Snapshot);
+                break;
+            case AppearancePage appearance:
+                appearance.Render(this, Snapshot);
                 break;
             case PackagesPage packages:
                 packages.Render(this, Snapshot);
@@ -446,6 +454,57 @@ public sealed partial class MainWindow : Window
         SelectNavigationItem();
         RenderCurrentPage();
         return Task.CompletedTask;
+    }
+
+    internal async Task<AppearanceSnapshot> RunAppearanceAsync(string method, object? parameters = null)
+    {
+        try
+        {
+            var result = await _backend.RequestAsync<AppearanceSnapshot>(method, parameters);
+            ApplySnapshot(await _backend.RequestAsync<BackendAppSnapshot>("getState", null));
+            return result;
+        }
+        catch
+        {
+            await RefreshAppearanceFeedbackAsync();
+            throw;
+        }
+    }
+
+    private async Task RefreshAppearanceFeedbackAsync()
+    {
+        try
+        {
+            ApplySnapshot(await _backend.RequestAsync<BackendAppSnapshot>("getState", null));
+        }
+        catch (Exception exception)
+        {
+            App.LogException("Appearance feedback refresh failed", exception);
+        }
+    }
+
+    internal async Task<AppearanceImageResult?> PickAppearanceImageAsync()
+    {
+        var picker = new FileOpenPicker();
+        foreach (var extension in new[] { ".png", ".jpg", ".jpeg", ".webp" })
+        {
+            picker.FileTypeFilter.Add(extension);
+        }
+        InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(this));
+        var file = await picker.PickSingleFileAsync();
+        if (file is null)
+        {
+            return null;
+        }
+        try
+        {
+            return await _backend.RequestAsync<AppearanceImageResult>("appearance.importImage", new { path = file.Path });
+        }
+        catch
+        {
+            await RefreshAppearanceFeedbackAsync();
+            throw;
+        }
     }
 
     internal static Task OpenPathAsync(string path)
@@ -869,7 +928,7 @@ public sealed partial class MainWindow : Window
     private static string InitialSection()
     {
         var requested = Environment.GetEnvironmentVariable("CODEX_TWEAKS_INITIAL_SECTION");
-        return requested is "packages" or "logs" or "updates" ? requested : "overview";
+        return requested is "appearance" or "packages" or "logs" or "updates" ? requested : "overview";
     }
 
     [DllImport("user32.dll")]

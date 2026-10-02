@@ -12,6 +12,7 @@
 		0E2FBEE784B852532424F206 /* TweakPackageBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63708A61AFD3EB99BE1C3359 /* TweakPackageBuilder.swift */; };
 		11D0A0C67D1E7535E8108E77 /* GeneratedPresentationContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFBAED99F1376AC7FE90B523 /* GeneratedPresentationContract.swift */; };
 		20E842FFBE6F22751C5C61E9 /* CodexTweaksApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C054F18E9178A1188A15F944 /* CodexTweaksApp.swift */; };
+		22987DD2C4D113778C0B6317 /* AppearanceContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 061D08E9E8DEFC89853857CB /* AppearanceContractTests.swift */; };
 		25D7CED87BB3FF932128784D /* TestIsolationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 356CA0F6751DCFB03E5A71FF /* TestIsolationTests.swift */; };
 		28FCCB3B972EDF184DA711DB /* BuiltAppBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68689767E171B444813D5B27 /* BuiltAppBundle.swift */; };
 		2E6F7321FDC0E8D91110C9E1 /* BackendJSON.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25E3517257D811F2B1D3625A /* BackendJSON.swift */; };
@@ -34,11 +35,13 @@
 		9B6EFD795DE11B522F620A75 /* BackendProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = D46E6EAFFFA8697F8252BAFC /* BackendProtocol.swift */; };
 		9BD95832142FCA6E642F6E68 /* MenuBarContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66D2C341CFA9C0CFC0CCB4EE /* MenuBarContent.swift */; };
 		A0A37D1CE682185A14010D8B /* TweakPackageDependencyResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CB762E9C9F9FD3D4400C65F /* TweakPackageDependencyResolver.swift */; };
+		A2F34D3432AAC244605108FD /* THIRD-PARTY-NOTICES.txt in Resources */ = {isa = PBXBuildFile; fileRef = 05F2CA88227725AD939DEEB2 /* THIRD-PARTY-NOTICES.txt */; };
 		B07DCC0D1F3A83EB3CA521A3 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = DE823B2C0079E436D758AA8F /* Localizable.strings */; };
 		B89FB6D55F5D0E0CB0EA3E7F /* PresentationText.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDC46BCBEBD8535824D33363 /* PresentationText.swift */; };
 		C14CBB8530ECDC408598896C /* TweakPackageModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2ED75A85C1B3152DC926A30F /* TweakPackageModels.swift */; };
 		C6EF7C822C1A087A5B678E40 /* Skills in Resources */ = {isa = PBXBuildFile; fileRef = 272C1FF554CEC91593F59C8F /* Skills */; };
 		C90628F61E522C2FC62419A5 /* TweakPackageRemoteManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = DECCE54F4FF81979BBBAB5CC /* TweakPackageRemoteManager.swift */; };
+		D70494E7D7B256CA6772D7F2 /* AppearanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02A9D8B8658E09C352A7F47D /* AppearanceView.swift */; };
 		DA607E1A3C45C42686489B72 /* BackendJSON.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25E3517257D811F2B1D3625A /* BackendJSON.swift */; };
 		DFD5E3A9CB13636716BDF09E /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = DFFFA7035AA0A0B5F1982477 /* Sparkle */; };
 		E1416863166E561FC4DC1EDD /* BackendClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ECD0C73EE0D60F0F6A53202 /* BackendClient.swift */; };
@@ -52,6 +55,9 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		02A9D8B8658E09C352A7F47D /* AppearanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppearanceView.swift; sourceTree = "<group>"; };
+		05F2CA88227725AD939DEEB2 /* THIRD-PARTY-NOTICES.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "THIRD-PARTY-NOTICES.txt"; sourceTree = "<group>"; };
+		061D08E9E8DEFC89853857CB /* AppearanceContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppearanceContractTests.swift; sourceTree = "<group>"; };
 		0F5EBF53A71E7D7C218FDA82 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = AppIcon.icon; sourceTree = "<group>"; };
 		12AEDA74C8286F095B2A4E60 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		25E3517257D811F2B1D3625A /* BackendJSON.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendJSON.swift; sourceTree = "<group>"; };
@@ -105,6 +111,7 @@
 		02ADE82B8312F3296E7A29D6 /* Tests */ = {
 			isa = PBXGroup;
 			children = (
+				061D08E9E8DEFC89853857CB /* AppearanceContractTests.swift */,
 				3586156F50638102CDE5AB2C /* BackendBundleTests.swift */,
 				F38F687C3332FDB933C2F404 /* BackendClientLifecycleTests.swift */,
 				752944AE65CF3C41046BE3B3 /* BackendProtocolTests.swift */,
@@ -118,6 +125,7 @@
 		3C055A6968F80D849ABC79F5 /* Sources */ = {
 			isa = PBXGroup;
 			children = (
+				02A9D8B8658E09C352A7F47D /* AppearanceView.swift */,
 				12AEDA74C8286F095B2A4E60 /* AppModel.swift */,
 				5C58B083F3D76F43FDC45941 /* AppStatus.swift */,
 				5ECD0C73EE0D60F0F6A53202 /* BackendClient.swift */,
@@ -181,6 +189,7 @@
 			isa = PBXGroup;
 			children = (
 				272C1FF554CEC91593F59C8F /* Skills */,
+				05F2CA88227725AD939DEEB2 /* THIRD-PARTY-NOTICES.txt */,
 				97D480478F1DC70304266CB9 /* app */,
 				DC9550B98A120B5A32C477F0 /* Products */,
 			);
@@ -310,6 +319,7 @@
 				6532DEC8D6DCE8C0132E9CE6 /* AppIcon.icon in Resources */,
 				B07DCC0D1F3A83EB3CA521A3 /* Localizable.strings in Resources */,
 				C6EF7C822C1A087A5B678E40 /* Skills in Resources */,
+				A2F34D3432AAC244605108FD /* THIRD-PARTY-NOTICES.txt in Resources */,
 				6EE55D663F4BA7C8C133418A /* Tweaks in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -344,6 +354,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				E822BFAD340AA5116454FA0D /* AppStatus.swift in Sources */,
+				22987DD2C4D113778C0B6317 /* AppearanceContractTests.swift in Sources */,
 				E1416863166E561FC4DC1EDD /* BackendClient.swift in Sources */,
 				EFE43082D0E85F6448D80ABF /* BackendClientLifecycleTests.swift in Sources */,
 				DA607E1A3C45C42686489B72 /* BackendJSON.swift in Sources */,
@@ -377,6 +388,7 @@
 			files = (
 				F7A1ECDD4A02A3A692A8694D /* AppModel.swift in Sources */,
 				694CBBB375BCEEA660DB5163 /* AppStatus.swift in Sources */,
+				D70494E7D7B256CA6772D7F2 /* AppearanceView.swift in Sources */,
 				54B0B6FE5BFFCD0689A620EF /* BackendClient.swift in Sources */,
 				2E6F7321FDC0E8D91110C9E1 /* BackendJSON.swift in Sources */,
 				9B6EFD795DE11B522F620A75 /* BackendProtocol.swift in Sources */,
