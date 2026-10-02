@@ -26,12 +26,18 @@ internal sealed class BackendClient : IAsyncDisposable
     private Task? _stdoutTask;
     private Task? _stderrTask;
     private volatile bool _stopping;
+    private readonly object _disposeGate = new();
+    private Task? _disposeTask;
 
     internal event Action<BackendAppSnapshot>? SnapshotChanged;
     internal event Action<string>? BackendFailed;
 
     internal async Task<BackendAppSnapshot> StartAsync()
     {
+        if (_stopping)
+        {
+            throw new ObjectDisposedException(nameof(BackendClient));
+        }
         if (_process is not null)
         {
             return await RequestAsync<BackendAppSnapshot>("getState", null);
@@ -300,7 +306,16 @@ internal sealed class BackendClient : IAsyncDisposable
         }
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
+    {
+        lock (_disposeGate)
+        {
+            _stopping = true;
+            return new ValueTask(_disposeTask ??= DisposeCoreAsync());
+        }
+    }
+
+    private async Task DisposeCoreAsync()
     {
         var process = _process;
         if (process is null)

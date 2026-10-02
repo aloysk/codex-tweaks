@@ -3,6 +3,26 @@ import Foundation
 import XCTest
 
 final class BackendClientLifecycleTests: XCTestCase {
+    func testSmallCompleteFrameIsDecodedBeforeThePipeCloses() async throws {
+        // Echo bytes verbatim: this fixture has no JSON field parser. The
+        // request has an ID but no result, so its echo must fail decoding
+        // immediately while the shell keeps both pipes open for another line.
+        let client = makeClient(script: #"while IFS= read -r line; do printf '%s\n' "$line"; done"#,
+                                requestTimeout: 1)
+        try client.launchIfNeeded()
+        do {
+            let _: BackendAccepted = try await client.request(method: "ping", params: Params())
+            XCTFail("An echoed request is not a valid result")
+        } catch BackendClientError.malformedResponse {}
+        XCTAssertEqual(client.pendingRequestCount, 0)
+        let ownedPID = try XCTUnwrap(client.ownedProcessIdentifier)
+        XCTAssertEqual(Darwin.kill(ownedPID, 0), 0)
+        do {
+            try await client.stop()
+            XCTFail("The echo fixture cannot confirm shutdown cleanup")
+        } catch BackendClientError.shutdownIncomplete {}
+    }
+
     func testTimeoutRemovesRequestAndLaterReplyDoesNotCompleteItAgain() async throws {
         let client = makeClient(requestTimeout: 0.15)
         try client.launchIfNeeded()

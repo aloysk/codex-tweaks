@@ -340,7 +340,7 @@ final class BackendClient: @unchecked Sendable {
             errorHandle = stderr.fileHandleForReading
             output.fileHandleForReading.readabilityHandler = { [weak self, weak owned] handle in
                 do {
-                    let data = try handle.read(upToCount: 64 * 1024) ?? Data()
+                    let data = try Self.readAvailableChunk(from: handle, capacity: 64 * 1024)
                     if data.isEmpty { handle.readabilityHandler = nil }
                     self?.queue.async {
                         guard let self, let owned, self.process === owned else { return }
@@ -358,7 +358,7 @@ final class BackendClient: @unchecked Sendable {
             }
             stderr.fileHandleForReading.readabilityHandler = { [diagnostic] handle in
                 do {
-                    let data = try handle.read(upToCount: 4096) ?? Data()
+                    let data = try Self.readAvailableChunk(from: handle, capacity: 4096)
                     if data.isEmpty { handle.readabilityHandler = nil }
                     else { counter.add(data.count) }
                 } catch {
@@ -367,6 +367,22 @@ final class BackendClient: @unchecked Sendable {
                 }
             }
         }
+    }
+
+    private static func readAvailableChunk(from handle: FileHandle, capacity: Int) throws -> Data {
+        var data = Data(count: capacity)
+        var count: Int
+        repeat {
+            count = data.withUnsafeMutableBytes { buffer in
+                Darwin.read(handle.fileDescriptor, buffer.baseAddress, buffer.count)
+            }
+        } while count < 0 && errno == EINTR
+        guard count >= 0 else { throw BackendClientError.transportFailure }
+        // One POSIX read returns a short pipe frame immediately. FileHandle's
+        // read(upToCount:) can keep filling the requested count until EOF,
+        // which would hold an RPC reply while the sidecar awaits its next input.
+        data.count = count
+        return data
     }
 
     private func consumeOutput(_ data: Data) {

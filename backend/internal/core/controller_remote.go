@@ -30,7 +30,7 @@ func (c *Controller) InstallRemotePackage(repositoryURL string, selectorType Rem
 			c.installingRemotePackage = false
 			c.remoteOperationError = &message
 			c.mu.Unlock()
-			c.logger.Error("从 Git 安装功能包失败：" + message)
+			c.logger.Error("从 Git 安装功能包失败：class=" + diagnosticErrorClass(err))
 			c.emit()
 			return
 		}

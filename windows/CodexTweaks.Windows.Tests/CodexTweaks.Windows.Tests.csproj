@@ -17,5 +17,8 @@
   <ItemGroup>
     <Compile Include="../CodexTweaks.Windows/Services/FrontendDiagnostics.cs" Link="FrontendDiagnostics.cs" />
     <Compile Include="../CodexTweaks.Windows/Generated/PresentationContract.g.cs" Link="PresentationContract.g.cs" />
+    <Compile Include="../CodexTweaks.Windows/Services/BackendClient.cs" Link="BackendClient.cs" />
+    <Compile Include="../CodexTweaks.Windows/Models/BackendModels.cs" Link="BackendModels.cs" />
+    <Compile Include="../CodexTweaks.Windows/Services/PresentationFallback.cs" Link="PresentationFallback.cs" />
   </ItemGroup>
 </Project>
