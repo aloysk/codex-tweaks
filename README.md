@@ -4,6 +4,8 @@
 
 <h1 align="center">Codex Tweaks</h1>
 
+> 本 fork 的桌面增强需求与开发准备见 [规划文档入口](docs/desktop-enhancement/README.md)。当前新增内容仅为调研、PRD 与开发计划，尚未实现新增功能；下文保留上游现有产品说明。
+
 <p align="center">
   Codex Tweaks 是一个面向 Codex 桌面客户端的本地界面定制工具。<br>
   它通过统一、简单的功能包管理方式，让用户无需直接修改 Codex 应用文件，也能调整 UI、扩展界面交互并进行个性化美化。
