@@ -75,15 +75,24 @@ type rendererAuthorization struct {
 	packageID string
 }
 
+type rendererBridgeIdentity struct {
+	verify func(context.Context) error
+	owner  string
+}
+
 type rendererBridgeSession struct {
-	id          string
-	debuggerURL string
-	targetURL   string
-	connection  *websocket.Conn
-	logger      *Logger
-	secret      string
-	invoker     NodeInvoker
-	invokerMu   sync.RWMutex
+	id             string
+	debuggerURL    string
+	targetURL      string
+	connection     *websocket.Conn
+	logger         *Logger
+	secret         string
+	invoker        NodeInvoker
+	invokerMu      sync.RWMutex
+	verifyIdentity func(context.Context) error
+	lifetime       context.Context
+	cancel         context.CancelFunc
+	owner          string
 
 	writeMu sync.Mutex
 	stateMu sync.Mutex
@@ -122,6 +131,7 @@ func openRendererBridgeSession(
 	target CDPTarget,
 	invoker NodeInvoker,
 	logger *Logger,
+	identity ...rendererBridgeIdentity,
 ) (*rendererBridgeSession, error) {
 	header := http.Header{}
 	header.Set("Origin", allowedOrigin)
@@ -139,6 +149,7 @@ func openRendererBridgeSession(
 		_ = connection.Close()
 		return nil, err
 	}
+	lifetime, cancel := context.WithCancel(context.Background())
 	session := &rendererBridgeSession{
 		id: id, debuggerURL: *target.WebSocketDebuggerURL, targetURL: target.URL, connection: connection,
 		invoker: invoker, logger: logger, secret: secret, nextID: 1,
@@ -147,6 +158,11 @@ func openRendererBridgeSession(
 		requestSlots:   make(chan struct{}, rendererBridgeMaximumConcurrent),
 		responseSlots:  make(chan struct{}, rendererBridgeMaximumResponses),
 		scripts:        map[string]string{},
+		lifetime:       lifetime, cancel: cancel,
+	}
+	if len(identity) > 0 {
+		session.verifyIdentity = identity[0].verify
+		session.owner = identity[0].owner
 	}
 	go session.readLoop()
 	setupContext, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -175,6 +191,9 @@ func (s *rendererBridgeSession) Close() { s.fail(errRendererBridgeSessionClosed)
 
 func (s *rendererBridgeSession) fail(sessionError error) {
 	s.closeOnce.Do(func() {
+		if s.cancel != nil {
+			s.cancel()
+		}
 		s.stateMu.Lock()
 		s.closed = true
 		pending := s.pending
@@ -189,6 +208,15 @@ func (s *rendererBridgeSession) fail(sessionError error) {
 }
 
 func (s *rendererBridgeSession) call(ctx context.Context, method string, parameters any) (json.RawMessage, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if s.verifyIdentity != nil {
+		if err := s.verifyIdentity(ctx); err != nil {
+			s.fail(err)
+			return nil, err
+		}
+	}
 	s.stateMu.Lock()
 	if s.closed {
 		s.stateMu.Unlock()
@@ -200,14 +228,19 @@ func (s *rendererBridgeSession) call(ctx context.Context, method string, paramet
 	s.pending[commandID] = waiter
 	s.stateMu.Unlock()
 
-	s.writeMu.Lock()
-	_ = s.connection.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	if err := lockWithContext(ctx, &s.writeMu); err != nil {
+		s.removePending(commandID)
+		return nil, err
+	}
+	stopCancellation := context.AfterFunc(ctx, func() { s.fail(ctx.Err()) })
+	defer stopCancellation()
+	_ = s.connection.SetWriteDeadline(cdpCommandDeadline(ctx))
 	err := s.connection.WriteJSON(map[string]any{"id": commandID, "method": method, "params": parameters})
 	s.writeMu.Unlock()
 	if err != nil {
 		s.removePending(commandID)
 		s.fail(err)
-		return nil, err
+		return nil, cdpContextError(ctx, err)
 	}
 	select {
 	case response := <-waiter:
@@ -347,8 +380,18 @@ func (s *rendererBridgeSession) handleBridgeRequest(executionContextID int, requ
 		})
 		return
 	}
-	requestContext, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	lifetime := s.lifetime
+	if lifetime == nil {
+		lifetime = context.Background()
+	}
+	requestContext, cancel := context.WithTimeout(lifetime, 60*time.Second)
 	defer cancel()
+	if s.verifyIdentity != nil {
+		if err := s.verifyIdentity(requestContext); err != nil {
+			s.fail(err)
+			return
+		}
+	}
 	result, invocationError := invoker.InvokeNode(requestContext, authorization.packageID, request.Method, request.Parameters)
 	s.sendBridgeResponse(executionContextID, rendererBridgeResponse{
 		ID: request.ID, OK: invocationError == nil, Result: result, Error: invocationError,
@@ -358,11 +401,12 @@ func (s *rendererBridgeSession) handleBridgeRequest(executionContextID int, requ
 func (s *rendererBridgeSession) sendBridgeResponse(executionContextID int, response rendererBridgeResponse) {
 	expression := fmt.Sprintf(`(() => {
   try {
+    if (globalThis["__CODEX_TWEAKS__"]?.owner !== %s) return false;
     return globalThis["__CODEX_TWEAKS__"]?.settleNodeInvocation(%s) ?? false;
   } catch (_) {
     return false;
   }
-})()`, JSONLiteral(response))
+})()`, JSONLiteral(s.owner), JSONLiteral(response))
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if _, err := s.call(ctx, "Runtime.evaluate", map[string]any{
@@ -376,11 +420,12 @@ func (s *rendererBridgeSession) sendBridgeResponse(executionContextID int, respo
 func (s *rendererBridgeSession) sendNodeEvent(event NodeRuntimeEvent) {
 	expression := fmt.Sprintf(`(() => {
   try {
+    if (globalThis["__CODEX_TWEAKS__"]?.owner !== %s) return false;
     return globalThis["__CODEX_TWEAKS__"]?.emitNodeEvent(%s, %s, %s) ?? false;
   } catch (_) {
     return false;
   }
-})()`, JSONLiteral(event.PackageID), JSONLiteral(event.Name), string(event.Payload))
+})()`, JSONLiteral(s.owner), JSONLiteral(event.PackageID), JSONLiteral(event.Name), string(event.Payload))
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_, _ = s.call(ctx, "Runtime.evaluate", map[string]any{
@@ -416,8 +461,24 @@ func (s *CDPService) rendererBridgeForTargetLocked(
 		existing = nil
 	}
 	if existing == nil {
-		created, err := openRendererBridgeSession(ctx, s.dialer, s.AllowedOrigin, target, s.nodeInvoker, s.logger)
+		if err := s.verifyBoundTarget(ctx); err != nil {
+			return "", nil, nil, err
+		}
+		if err := s.debuggerAuthority(*target.WebSocketDebuggerURL); err != nil {
+			return "", nil, nil, err
+		}
+		identity := *s.boundTarget
+		created, err := openRendererBridgeSession(ctx, s.dialer, s.AllowedOrigin, target, s.nodeInvoker, s.logger, rendererBridgeIdentity{verify: func(ctx context.Context) error { return s.verifyIdentity(ctx, identity) }, owner: s.owner})
 		if err != nil {
+			return "", nil, nil, err
+		}
+		if _, err := created.call(ctx, "Runtime.evaluate", map[string]any{"expression": fmt.Sprintf(`(() => {
+  const binding = globalThis[%s];
+  if (typeof binding !== "function") throw new Error("Renderer binding unavailable");
+  Object.defineProperty(binding, "__codexTweaksOwner", { value: %s, configurable: true });
+  return true;
+})()`, JSONLiteral(rendererBridgeBindingName), JSONLiteral(s.owner)), "returnByValue": true, "awaitPromise": true}); err != nil {
+			created.Close()
 			return "", nil, nil, err
 		}
 		s.sessions[target.ID] = created

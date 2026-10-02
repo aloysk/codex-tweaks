@@ -40,5 +40,6 @@ func localizedPresentationText(overrides map[string]string) map[string]string {
 	for key, value := range overrides {
 		result[key] = value
 	}
+	result["app.name"] = ApplicationName
 	return result
 }

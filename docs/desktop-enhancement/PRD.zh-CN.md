@@ -1,6 +1,6 @@
 # Codex Tweaks Companion PRD
 
-文档版本：0.2；日期：2026-10-02（SGT）；状态：开发前规格。本阶段只完善文档与开发基础设施，没有实现 companion 功能，也没有完成官方 App 的连接、注入或真机恢复验证。本文定义目标行为；当前继承的产品见根目录 `PRODUCT.md`，事实边界见同目录 `UPSTREAM.md`。实现结构、视觉方向与贡献流程分别见根目录 `ARCHITECTURE.md`、`DESIGN.md`、`CONTRIBUTING.md`；社区材料以 `docs/resources/README.md` 和 `docs/resources/manifest.json` 为索引，不要求先通读所有外部项目。
+文档版本：0.3；日期：2026-10-02（SGT）；状态：分批实现与验证。准备阶段已完成规格和开发基础，运行基础与 companion 功能按 `IMPLEMENTATION.md` 的六个 PR 安排推进；合成测试与 CI 不代替官方 App 真机验收。本文定义目标行为；当前继承的产品见根目录 `PRODUCT.md`，事实边界见同目录 `UPSTREAM.md`。实现结构、视觉方向与贡献流程分别见根目录 `ARCHITECTURE.md`、`DESIGN.md`、`CONTRIBUTING.md`；社区材料以 `docs/resources/README.md` 和 `docs/resources/manifest.json` 为索引，不要求先通读所有外部项目。
 
 ## AI 速读卡
 
@@ -533,6 +533,8 @@ zcode-monitor 只提供状态呈现、去重和生命周期参考，其 ZCode �
 | DOM / CSS / 显式文件选择 | 官方窗口外观与用户素材 | 首批视觉包无需额外 Node 后台 | 新增第三方依赖为 0 的设计目标，最终 bundle 待测 |
 
 完整结构和源码入口以根目录 `ARCHITECTURE.md` 为准。最大风险仍是官方更新导致私有适配失效：固定已验证版本组合，逐能力探测，单包失败隔离；目标身份失效则停止全部相关操作。普通启动是否可附加、面板设置如何到达 renderer、胶囊如何不抢焦点，必须分别验证，不能用外观 mock 或编译结果替代。
+
+正式功能开发前先满足 `docs/development/runtime-foundation.md` 的基础条件：有界日志及可见写失败、RPC 传输失败传播、配置先保存再生效、普通测试与真实进程/CDP 隔离、取消后不重新激活、有界退出和明确进程归属，以及依赖/开发工具前置检查。这些条件在 PR3 实现并验证；后续功能复用同一基础，不另造日志、状态机或插件框架。
 
 外观包只承担官方 renderer 的效果，不承担 companion 原生界面；Go 拥有设置与动作语义，生成 Presentation 后由两端消费。当前阶段不建立通用状态机、插件平台、远程事件服务或历史数据仓库。资源清单供开发按需查阅，不参与运行时加载。
 

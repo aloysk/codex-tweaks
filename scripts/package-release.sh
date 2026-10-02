@@ -4,6 +4,11 @@ set -euo pipefail
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
+# shellcheck source=scripts/application-identity.sh
+source "$ROOT_DIR/scripts/application-identity.sh"
+PRODUCT_NAME="$(application_identity name)"
+ARTIFACT_PREFIX="$(application_identity artifactPrefix)"
+
 RELEASE_TAG="${RELEASE_TAG:-${1:-}}"
 BUILD_NUMBER="${BUILD_NUMBER:-1}"
 DIST_DIR="${DIST_DIR:-dist}"
@@ -21,7 +26,6 @@ if [[ ! "$BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
   exit 1
 fi
 
-PRODUCT_NAME="Codex Tweaks"
 CODE_SIGN_IDENTITY="${MACOS_CODE_SIGN_IDENTITY:--}"
 
 SIGNING_SETTINGS=("CODE_SIGN_IDENTITY=${CODE_SIGN_IDENTITY}")
@@ -45,9 +49,9 @@ rm -rf \
   "${DIST_DIR}/${PRODUCT_NAME}-arm64.app" \
   "${DIST_DIR}/${PRODUCT_NAME}-x86_64.app"
 rm -f \
-  "${DIST_DIR}/Codex-Tweaks-${RELEASE_TAG}.dmg" \
-  "${DIST_DIR}/Codex-Tweaks-${RELEASE_TAG}-arm64.dmg" \
-  "${DIST_DIR}/Codex-Tweaks-${RELEASE_TAG}-x86_64.dmg" \
+  "${DIST_DIR}/${ARTIFACT_PREFIX}-${RELEASE_TAG}.dmg" \
+  "${DIST_DIR}/${ARTIFACT_PREFIX}-${RELEASE_TAG}-arm64.dmg" \
+  "${DIST_DIR}/${ARTIFACT_PREFIX}-${RELEASE_TAG}-x86_64.dmg" \
   "${DIST_DIR}/SHA256SUMS"
 
 build_app() {
@@ -86,7 +90,7 @@ create_dmg() (
   settings_file="$(mktemp "${TMPDIR:-/tmp}/codex-tweaks-dmgbuild.XXXXXX.json")"
   trap 'rm -f "$settings_file"' EXIT
   sed \
-    "s|dist/Codex Tweaks-arm64.app|${DIST_DIR}/${app_name}.app|" \
+    "s|dist/${PRODUCT_NAME}-arm64.app|${DIST_DIR}/${app_name}.app|" \
     scripts/dmgbuild.json \
     > "$settings_file"
 
@@ -102,8 +106,8 @@ build_app universal "arm64 x86_64" "$PRODUCT_NAME"
 build_app arm64 arm64 "${PRODUCT_NAME}-arm64"
 build_app x86_64 x86_64 "${PRODUCT_NAME}-x86_64"
 
-create_dmg "$PRODUCT_NAME" "Codex-Tweaks-${RELEASE_TAG}.dmg"
-create_dmg "${PRODUCT_NAME}-arm64" "Codex-Tweaks-${RELEASE_TAG}-arm64.dmg"
-create_dmg "${PRODUCT_NAME}-x86_64" "Codex-Tweaks-${RELEASE_TAG}-x86_64.dmg"
+create_dmg "$PRODUCT_NAME" "${ARTIFACT_PREFIX}-${RELEASE_TAG}.dmg"
+create_dmg "${PRODUCT_NAME}-arm64" "${ARTIFACT_PREFIX}-${RELEASE_TAG}-arm64.dmg"
+create_dmg "${PRODUCT_NAME}-x86_64" "${ARTIFACT_PREFIX}-${RELEASE_TAG}-x86_64.dmg"
 
 echo "Release ${RELEASE_TAG} 构建完成（版本 ${MARKETING_VERSION}，构建号 ${BUILD_NUMBER}）"

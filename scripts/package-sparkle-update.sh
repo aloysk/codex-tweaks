@@ -4,10 +4,20 @@ set -euo pipefail
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
+# shellcheck source=scripts/application-identity.sh
+source "$ROOT_DIR/scripts/application-identity.sh"
+PRODUCT_NAME="$(application_identity name)"
+ARTIFACT_PREFIX="$(application_identity artifactPrefix)"
+
+if [[ "$(application_identity updatesEnabled)" != true ]]; then
+  echo "Application updates are disabled until this fork has a verified signing identity and feed." >&2
+  exit 1
+fi
+
 RELEASE_TAG="${RELEASE_TAG:-${1:-}}"
 BUILD_NUMBER="${BUILD_NUMBER:-1}"
 DIST_DIR="${DIST_DIR:-dist}"
-GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-codex-tweaks/codex-tweaks}"
+GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-$(application_identity repository)}"
 SPARKLE_EDDSA_PRIVATE_KEY="${SPARKLE_EDDSA_PRIVATE_KEY:-}"
 SPARKLE_PUBLIC_ED_KEY="${SPARKLE_PUBLIC_ED_KEY:-}"
 
@@ -48,9 +58,9 @@ if [[ "$derived_public_key" != "$SPARKLE_PUBLIC_ED_KEY" ]]; then
   exit 1
 fi
 
-product_name="Codex Tweaks"
+product_name="$PRODUCT_NAME"
 app_path="${DIST_DIR}/${product_name}.app"
-archive_name="Codex-Tweaks-${RELEASE_TAG}-sparkle.zip"
+archive_name="${ARTIFACT_PREFIX}-${RELEASE_TAG}-sparkle.zip"
 archive_path="${DIST_DIR}/${archive_name}"
 appcast_path="${DIST_DIR}/appcast.xml"
 

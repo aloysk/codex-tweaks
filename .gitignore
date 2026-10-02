@@ -13,5 +13,6 @@ xcuserdata/
 # Checkout-local development environments and code navigation indexes.
 .venv-dev/
 .serena/
+.codegraph/
 .pre-commit-cache/
 __pycache__/

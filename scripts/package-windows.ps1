@@ -16,6 +16,8 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $root = Split-Path -Parent $PSScriptRoot
+$identity = Get-Content -LiteralPath (Join-Path $root 'contract/application-identity.json') -Raw | ConvertFrom-Json
+if ($identity.version -ne 1) { throw 'Unsupported application identity version.' }
 $artifactRoot = Join-Path $root 'artifacts/windows'
 $stagedRelease = Join-Path $artifactRoot 'release'
 $icon = Join-Path $root 'windows/CodexTweaks.Windows/Assets/CodexTweaks.ico'
@@ -29,7 +31,7 @@ try {
     foreach ($rid in $RuntimeIdentifiers) {
         $architecture = if ($rid -eq 'win-arm64') { 'arm64' } else { 'x64' }
         $downloadArchitecture = if ($rid -eq 'win-arm64') { 'arm64' } else { 'x86_64' }
-        $packId = "com.crzhichen.CodexTweaks.$architecture"
+        $packId = "$($identity.bundleIdentifier).$architecture"
         $publish = Join-Path $artifactRoot "$rid/publish"
         $releases = Join-Path $artifactRoot "$rid/releases"
         if (-not (Test-Path (Join-Path $publish 'CodexTweaks.Windows.exe'))) {
@@ -46,8 +48,8 @@ try {
             '--packVersion', $Version,
             '--packDir', $publish,
             '--mainExe', 'CodexTweaks.Windows.exe',
-            '--packTitle', 'Codex Tweaks',
-            '--packAuthors', 'cr-zhichen',
+            '--packTitle', $identity.name,
+            '--packAuthors', $identity.publisher,
             '--icon', $icon,
             '--runtime', $rid,
             '--channel', "win-$architecture-$Channel",
@@ -69,7 +71,7 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "Velopack packaging failed: $rid" }
         $channelName = "win-$architecture-$Channel"
         $generatedSetup = Join-Path $releases "$packId-$channelName-Setup.exe"
-        $versionedSetup = Join-Path $releases "Codex-Tweaks-v${Version}-windows-Setup-${downloadArchitecture}.exe"
+        $versionedSetup = Join-Path $releases "$($identity.artifactPrefix)-v${Version}-windows-Setup-${downloadArchitecture}.exe"
         if (-not (Test-Path $generatedSetup)) {
             throw "Velopack did not create the expected installer: $generatedSetup"
         }

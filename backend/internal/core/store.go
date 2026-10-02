@@ -46,7 +46,7 @@ func NewStore(applicationSupport, caches, bundledPackages string) (*Store, error
 			return nil, err
 		}
 	}
-	applicationRoot := filepath.Join(applicationSupport, "Codex Tweaks")
+	applicationRoot := filepath.Join(applicationSupport, ApplicationName)
 	tweaks := filepath.Join(applicationRoot, "Tweaks")
 	managed := filepath.Join(applicationRoot, "ManagedPackages")
 	state := filepath.Join(applicationRoot, "State")
@@ -61,7 +61,7 @@ func NewStore(applicationSupport, caches, bundledPackages string) (*Store, error
 		ManagedSourcesDirectory:  filepath.Join(managed, "sources"),
 		ManagedRegistryPath:      filepath.Join(managed, "registry.json"),
 		ManagedLockfilePath:      filepath.Join(managed, "packages.lock.json"),
-		BuildCacheDirectory:      filepath.Join(caches, "Codex Tweaks", "PackageBuilds"),
+		BuildCacheDirectory:      filepath.Join(caches, ApplicationName, "PackageBuilds"),
 		BundledPackagesDirectory: bundledPackages,
 	}, nil
 }

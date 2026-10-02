@@ -5,11 +5,11 @@ import (
 	"testing"
 )
 
-func TestUpdateRepositoryUsesOrganizationCanonicalURL(t *testing.T) {
-	if UpdateRepository != "codex-tweaks/codex-tweaks" {
+func TestUpdateRepositoryUsesForkCanonicalURL(t *testing.T) {
+	if UpdateRepository != "aloysk/codex-tweaks" {
 		t.Fatalf("update repository = %q", UpdateRepository)
 	}
-	if UpdateRepositoryURL != "https://github.com/codex-tweaks/codex-tweaks" {
+	if UpdateRepositoryURL != "https://github.com/aloysk/codex-tweaks" {
 		t.Fatalf("update repository URL = %q", UpdateRepositoryURL)
 	}
 }

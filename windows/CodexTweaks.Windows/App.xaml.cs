@@ -1,3 +1,4 @@
+using CodexTweaks.Windows.Generated;
 using CodexTweaks.Windows.Services;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
@@ -13,16 +14,20 @@ public partial class App : Microsoft.UI.Xaml.Application
     private TrayIconService? _trayIcon;
     private bool _quitting;
     private static readonly string FrontendLogPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "Codex Tweaks",
+        Environment.GetEnvironmentVariable(ApplicationIdentity.EnvironmentPrefix + "APPLICATION_SUPPORT")
+            ?? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        ApplicationIdentity.Name,
         "Logs",
         "windows-frontend.log");
+    private static readonly FrontendDiagnostics Diagnostics = new(FrontendLogPath);
+
+    internal static string? LastLogError => Diagnostics.LastError;
 
     public App()
     {
         UnhandledException += (_, args) =>
         {
-            Log($"UnhandledException: {args.Exception}");
+            LogException("Unhandled exception", args.Exception);
         };
         try
         {
@@ -32,7 +37,7 @@ public partial class App : Microsoft.UI.Xaml.Application
         }
         catch (Exception exception)
         {
-            Log($"Application constructor failed: {exception}");
+            LogException("Application constructor failed", exception);
             throw;
         }
     }
@@ -58,7 +63,7 @@ public partial class App : Microsoft.UI.Xaml.Application
             {
                 _trayIcon?.Dispose();
                 _trayIcon = null;
-                Log($"Tray initialization failed; close will exit normally: {exception}");
+                LogException("Tray initialization failed; close will exit normally", exception);
             }
             _window.Activate();
             Log("Window activated.");
@@ -71,7 +76,7 @@ public partial class App : Microsoft.UI.Xaml.Application
         }
         catch (Exception exception)
         {
-            Log($"Window launch failed: {exception}");
+            LogException("Window launch failed", exception);
             throw;
         }
     }
@@ -111,16 +116,9 @@ public partial class App : Microsoft.UI.Xaml.Application
 
     internal static void Log(string message)
     {
-        try
-        {
-            Directory.CreateDirectory(Path.GetDirectoryName(FrontendLogPath)!);
-            File.AppendAllText(
-                FrontendLogPath,
-                $"{DateTimeOffset.Now:O} {message}{Environment.NewLine}");
-        }
-        catch
-        {
-            // Startup diagnostics must never prevent the app from launching.
-        }
+        Diagnostics.Log(message);
     }
+
+    internal static void LogException(string eventSummary, Exception exception) =>
+        Diagnostics.LogException(eventSummary, exception);
 }

@@ -11,6 +11,58 @@ import (
 	"time"
 )
 
+func TestStoreIsolatesUpstreamDataAndTrust(t *testing.T) {
+	root := t.TempDir()
+	support := filepath.Join(root, "support")
+	caches := filepath.Join(root, "cache")
+	legacy := map[string]string{
+		filepath.Join(support, "Codex Tweaks", "State", "package-settings.json"):                 `{"schemaVersion":1,"packages":{"upstream":{"priorityOverride":9}}}`,
+		filepath.Join(support, "Codex Tweaks", "State", "node-authorizations.json"):              `{"schemaVersion":1,"packages":{"upstream":{"authorizationID":"trusted-upstream"}}}`,
+		filepath.Join(support, "Codex Tweaks", "Tweaks", "packages", "upstream", "package.json"): `{"name":"upstream"}`,
+		filepath.Join(caches, "Codex Tweaks", "PackageBuilds", "sentinel"):                       "upstream cache",
+	}
+	for path, content := range legacy {
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	store, err := NewStore(support, caches, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	packages, err := store.LoadPackages()
+	if err != nil || len(packages) != 0 {
+		t.Fatalf("new fork must not discover upstream packages: %v, %v", packages, err)
+	}
+	settings, err := store.LoadUserSettings()
+	if err != nil || len(settings.Packages) != 0 {
+		t.Fatalf("new fork must not inherit upstream settings: %v, %v", settings, err)
+	}
+	trust, err := store.LoadNodeAuthorizations()
+	if err != nil || len(trust) != 0 {
+		t.Fatalf("new fork must not inherit upstream trust: %v, %v", trust, err)
+	}
+	if got, want := store.BuildCacheDirectory, filepath.Join(caches, ApplicationName, "PackageBuilds"); got != want {
+		t.Fatalf("cache root = %q, want %q", got, want)
+	}
+	priority := 3
+	if err := store.SetPriorityOverride("companion-package", &priority); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(support, ApplicationName, "State", "package-settings.json")); err != nil {
+		t.Fatalf("fork settings were not written to the isolated root: %v", err)
+	}
+	for path, expected := range legacy {
+		actual, err := os.ReadFile(path)
+		if err != nil || string(actual) != expected {
+			t.Fatalf("upstream data changed at %s: %q, %v", path, actual, err)
+		}
+	}
+}
+
 func TestStoreLoadsByPriorityAndIsolatesInvalidAndDuplicatePackages(t *testing.T) {
 	store, root := newTestStore(t)
 	makeStorePackage(t, store, "zeta", "zeta", "1.0.0", 20, nil, "")

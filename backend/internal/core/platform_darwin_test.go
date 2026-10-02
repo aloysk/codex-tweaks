@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestDarwinPlatformUsesNonInteractiveProcessControlsAndLoopbackLaunch(t *testing.T) {
+func TestDarwinPlatformUsesBundleIdentityAndNormalLaunch(t *testing.T) {
 	type invocation struct {
 		executable string
 		arguments  []string
@@ -39,12 +39,12 @@ func TestDarwinPlatformUsesNonInteractiveProcessControlsAndLoopbackLaunch(t *tes
 		t.Fatalf("unexpected running-app lookup: %#v", lookup)
 	}
 	launch := invocations[2]
-	if launch.executable != "/usr/bin/open" || !containsString(launch.arguments, "-n") || !containsString(launch.arguments, "-b") {
+	if launch.executable != "/usr/bin/open" || containsString(launch.arguments, "-n") || !containsString(launch.arguments, "-b") {
 		t.Fatalf("unexpected launch: %#v", launch)
 	}
 	for _, argument := range CodexDebuggingArguments {
-		if !containsString(launch.arguments, argument) {
-			t.Fatalf("launch omitted %q: %#v", argument, launch.arguments)
+		if containsString(launch.arguments, argument) {
+			t.Fatalf("normal launch included debug flag %q", argument)
 		}
 	}
 	for _, argument := range []string{"--use-gl=angle", "--use-angle=swiftshader"} {
@@ -74,34 +74,21 @@ func TestDarwinPlatformTreatsEmptyLaunchServicesLookupAsNotRunning(t *testing.T)
 	}
 }
 
-func TestDarwinPlatformRestartUsesApplicationNameAndWaitsForLaunchServicesExit(t *testing.T) {
-	type invocation struct {
-		executable string
-		arguments  []string
+func TestDarwinPlatformEnhancedLaunchRequiresManualExit(t *testing.T) {
+	calls := []string{}
+	platform := NewPlatform(commandRunnerFunc(func(_ context.Context, executable string, _ []string, _ string, _ []string) (CommandResult, error) {
+		calls = append(calls, executable)
+		return CommandResult{Output: "official bundle is running"}, nil
+	}))
+	if err := platform.RestartCodex(context.Background(), CodexLaunchOptions{Mode: CodexLaunchEnhanced}); err != ErrManualCodexExitRequired {
+		t.Fatalf("err=%v", err)
 	}
-	invocations := []invocation{}
-	runner := commandRunnerFunc(func(_ context.Context, executable string, arguments []string, _ string, _ []string) (CommandResult, error) {
-		invocations = append(invocations, invocation{executable: executable, arguments: append([]string(nil), arguments...)})
-		return CommandResult{}, nil
-	})
-
-	if err := NewPlatform(runner).RestartCodex(context.Background(), CodexLaunchOptions{DisableGPUAcceleration: true}); err != nil {
-		t.Fatal(err)
+	if len(calls) != 1 || calls[0] != "/usr/bin/lsappinfo" {
+		t.Fatalf("restart touched application: %v", calls)
 	}
-	if len(invocations) != 3 {
-		t.Fatalf("unexpected commands: %#v", invocations)
-	}
-	terminate := invocations[0]
-	if terminate.executable != "/usr/bin/killall" || !containsString(terminate.arguments, "-TERM") || !containsString(terminate.arguments, "ChatGPT") {
-		t.Fatalf("unexpected terminate command: %#v", terminate)
-	}
-	if invocations[1].executable != "/usr/bin/lsappinfo" || invocations[2].executable != "/usr/bin/open" {
-		t.Fatalf("unexpected restart sequence: %#v", invocations)
-	}
-	for _, argument := range []string{"--use-gl=angle", "--use-angle=swiftshader"} {
-		if !containsString(invocations[2].arguments, argument) {
-			t.Fatalf("macOS restart omitted %q: %#v", argument, invocations[2].arguments)
-		}
+	observation, err := platform.ObserveCodex(context.Background())
+	if err != nil || !observation.Running || observation.Target != nil || observation.ListenerOwned {
+		t.Fatalf("unverified macOS target attached: %#v err=%v", observation, err)
 	}
 }
 

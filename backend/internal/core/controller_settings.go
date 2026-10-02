@@ -6,8 +6,9 @@ func (c *Controller) SetDisableGPUAcceleration(enabled bool) error {
 		c.mu.Unlock()
 		return nil
 	}
-	c.config.DisableGPUAcceleration = enabled
-	err := c.persistConfigurationLocked()
+	next := c.config
+	next.DisableGPUAcceleration = enabled
+	err := c.persistConfigurationCandidateLocked(next)
 	c.mu.Unlock()
 	if err != nil {
 		return err
@@ -21,10 +22,11 @@ func (c *Controller) SetDisableGPUAcceleration(enabled bool) error {
 	return nil
 }
 
-func (c *Controller) codexLaunchOptions() CodexLaunchOptions {
+func (c *Controller) codexLaunchOptions(mode CodexLaunchMode) CodexLaunchOptions {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return CodexLaunchOptions{
+		Mode:                   mode,
 		DisableGPUAcceleration: c.config.DisableGPUAcceleration,
 	}
 }

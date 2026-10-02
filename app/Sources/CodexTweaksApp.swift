@@ -67,6 +67,7 @@ struct CodexTweaksApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     // Keep the Scene-managed window alive when the close button hides it.
     private var mainWindow: NSWindow?
+    private var terminationRequested = false
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
@@ -100,9 +101,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             return
         }
         NotificationCenter.default.removeObserver(self)
-        Task { @MainActor in
-            AppModel.shared.stop()
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
+            return .terminateNow
         }
+        guard !terminationRequested else { return .terminateLater }
+        terminationRequested = true
+        Task { @MainActor [weak self] in
+            let model = AppModel.shared
+            var allowExit = await model.stopBackend()
+            if !allowExit {
+                let alert = NSAlert()
+                alert.alertStyle = .warning
+                alert.messageText = model.text(.statusRecoveryPendingTitle)
+                alert.informativeText = model.text(.appBackendShutdownIncomplete)
+                alert.addButton(withTitle: model.text(.menuQuit))
+                alert.addButton(withTitle: model.text(.commonCancel))
+                allowExit = alert.runModal() == .alertFirstButtonReturn
+            }
+            self?.terminationRequested = false
+            sender.reply(toApplicationShouldTerminate: allowExit)
+        }
+        return .terminateLater
     }
 
     func showMainWindow() -> Bool {

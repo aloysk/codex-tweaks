@@ -37,7 +37,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var localOperationMessage: String?
     @Published private(set) var localOperationError: String?
 
-    @Published var isEnabled = true {
+    @Published var isEnabled = false {
         didSet {
             guard !isApplyingSnapshot, oldValue != isEnabled else { return }
             command("setEnabled", BoolParameter(enabled: isEnabled))
@@ -66,7 +66,7 @@ final class AppModel: ObservableObject {
     var menuBarSymbol: String {
         switch status {
         case .connected: return "wand.and.stars.inverse"
-        case .error, .restartRequired: return "wand.and.stars"
+        case .error, .restartRequired, .recoveryPending: return "wand.and.stars"
         default: return "sparkles"
         }
     }
@@ -80,6 +80,7 @@ final class AppModel: ObservableObject {
     private let backend = BackendClient.shared
     private var isApplyingSnapshot = false
     private var hasStarted = false
+    private var isStoppingBackend = false
     private var promptCopyResetTask: Task<Void, Never>?
 
     private init() {}
@@ -128,6 +129,9 @@ final class AppModel: ObservableObject {
     }
 
     var statusTitle: String {
+        if case .recoveryPending = status {
+            return text(.statusRecoveryPendingTitle)
+        }
         if case .error = status {
             return text(.statusErrorTitle)
         }
@@ -136,6 +140,9 @@ final class AppModel: ObservableObject {
     }
 
     var statusDetail: String? {
+        if case let .recoveryPending(message) = status {
+            return message
+        }
         if case let .error(message) = status {
             return message
         }
@@ -144,6 +151,7 @@ final class AppModel: ObservableObject {
     }
 
     var statusTone: String {
+        if case .recoveryPending = status { return "warning" }
         if case .error = status {
             return "danger"
         }
@@ -167,10 +175,17 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func stop() {
+    func stopBackend() async -> Bool {
+        isStoppingBackend = true
         promptCopyResetTask?.cancel()
         promptCopyResetTask = nil
-        Task { await backend.stop() }
+        do {
+            try await backend.stop()
+            return true
+        } catch {
+            status = .recoveryPending(text(.appBackendShutdownIncomplete))
+            return false
+        }
     }
 
     func openCodex() { command("openCodex") }
@@ -429,10 +444,7 @@ final class AppModel: ObservableObject {
     }
 
     func quit() {
-        Task { @MainActor in
-            await backend.stop()
-            NSApplication.shared.terminate(nil)
-        }
+        NSApplication.shared.terminate(nil)
     }
 
     func copyAuthoringPrompt() {
@@ -474,7 +486,8 @@ final class AppModel: ObservableObject {
     func sendUpdateCommand(_ method: String) { command(method) }
 
     private func apply(_ snapshot: BackendAppSnapshot) {
-        guard snapshot.protocolVersion == 10 else {
+        guard !isStoppingBackend else { return }
+        guard snapshot.protocolVersion == BackendProtocolContract.protocolVersion else {
             status = .error(text(.appProtocolMismatch))
             return
         }
@@ -564,8 +577,8 @@ final class AppModel: ObservableObject {
         )?.path
 
         return BackendInitializeParams(
-            applicationSupportDirectory: environment["CODEX_TWEAKS_APPLICATION_SUPPORT"],
-            cacheDirectory: environment["CODEX_TWEAKS_CACHE_DIRECTORY"],
+            applicationSupportDirectory: environment[ApplicationIdentity.environmentPrefix + "APPLICATION_SUPPORT"],
+            cacheDirectory: environment[ApplicationIdentity.environmentPrefix + "CACHE_DIRECTORY"],
             bundledPackagesDirectory: packagePath,
             skillPath: skillPath,
             preferredLanguages: Locale.preferredLanguages,

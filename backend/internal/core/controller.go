@@ -14,11 +14,12 @@ import (
 	"time"
 )
 
-const ProtocolVersion = 10
+const ProtocolVersion = 11
 
 type Controller struct {
 	mu                  sync.Mutex
 	refreshMu           sync.Mutex
+	runtimeMu           sync.Mutex
 	eventMu             sync.Mutex
 	ctx                 context.Context
 	cancel              context.CancelFunc
@@ -32,7 +33,7 @@ type Controller struct {
 	remote             *RemoteManager
 	installer          *LocalInstaller
 	exporter           *PackageExporter
-	cdp                *CDPService
+	cdp                CDPRuntime
 	platform           Platform
 	updates            *UpdateService
 	configPath         string
@@ -78,7 +79,14 @@ type Controller struct {
 	restartingCodexUI          bool
 	developerBuildAttemptKeys  map[string]string
 	disabledCleanupCompleted   bool
-	hasAttemptedInitialLaunch  bool
+	runtimeEpoch               uint64
+	injectCancel               context.CancelFunc
+	nodeLifetime               context.Context
+	nodeCancel                 context.CancelFunc
+	runtime                    RuntimeSnapshot
+	shuttingDown               bool
+	shutdownOnce               sync.Once
+	shutdownError              error
 	lastAutomaticRemoteCheckAt time.Time
 
 	updateChecking  bool
@@ -109,7 +117,9 @@ func NewController(params InitializeParams, event func(AppSnapshot), dependencie
 	}
 	cdp := dependencies.CDP
 	if cdp == nil {
-		cdp = NewCDPService(logger)
+		cdp = NewCDPService(logger, func(ctx context.Context, identity CodexProcessIdentity) error {
+			return verifyCodexTarget(ctx, platform, identity)
+		})
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	if repairable, ok := platform.(backgroundRepairPlatform); ok {
@@ -135,6 +145,7 @@ func NewController(params InitializeParams, event func(AppSnapshot), dependencie
 		remotePackageErrors: map[string]string{}, installingPackageIDs: map[string]bool{},
 		developerBuildAttemptKeys: map[string]string{},
 		nodeAuthorizations:        map[string]NodeAuthorizationRecord{},
+		runtime:                   RuntimeSnapshot{Recovery: RecoverySnapshot{InjectionStopped: true, PageCleanup: "unknown", DebugListener: "unknown", Targets: []CDPCleanupTargetResult{}}},
 	}
 	if err := controller.loadConfiguration(); err != nil {
 		cancel()
@@ -193,12 +204,12 @@ func (c *Controller) loadConfiguration() error {
 	} else {
 		configuration = AppConfiguration{
 			SchemaVersion:          1,
-			Enabled:                true,
+			Enabled:                false,
 			DisableGPUAcceleration: false,
 			DisabledPackageIDs:     []string{},
 			Language:               LanguageAuto,
 			UpdateChannel:          UpdateStable,
-			UpdateAutoCheck:        true,
+			UpdateAutoCheck:        ApplicationUpdatesEnabled,
 			UpdateSkippedVersions:  []string{},
 		}
 	}
@@ -312,6 +323,7 @@ func (c *Controller) Snapshot() AppSnapshot {
 	})
 	return AppSnapshot{
 		ProtocolVersion: ProtocolVersion, Presentation: presentation, Status: c.status,
+		Runtime: c.runtimeSnapshotLocked(),
 		Enabled: c.config.Enabled, DisableGPUAcceleration: c.config.DisableGPUAcceleration,
 		DeveloperMode:             c.config.DeveloperMode,
 		DeveloperAllowUnknownNode: c.developerAllowUnknownNode, Packages: packageViews,
@@ -600,15 +612,49 @@ func (c *Controller) ReadAuthoringPrompt() (string, error) {
 	return string(contents), nil
 }
 
-func (c *Controller) Shutdown() {
-	if c.nodeRuntime != nil {
-		c.nodeRuntime.StopAll()
+const ShutdownTimeout = 3 * time.Second
+
+func (c *Controller) Shutdown() error {
+	c.shutdownOnce.Do(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), ShutdownTimeout)
+		defer cancel()
+		c.cancel()
+		if err := lockWithContext(ctx, &c.mu); err != nil {
+			c.shutdownError = err
+			return
+		}
+		c.shuttingDown = true
+		c.runtimeEpoch++
+		if c.injectCancel != nil {
+			c.injectCancel()
+		}
+		c.mu.Unlock()
+		// Refresh takes refreshMu before runtimeMu. Drain its package reads/writes
+		// in the same order before releasing the controller's filesystem lifetime.
+		if err := lockWithContext(ctx, &c.refreshMu); err != nil {
+			c.shutdownError = err
+			return
+		}
+		defer c.refreshMu.Unlock()
+		if err := lockWithContext(ctx, &c.runtimeMu); err != nil {
+			c.shutdownError = err
+			return
+		}
+		defer c.runtimeMu.Unlock()
+		c.shutdownError = c.stopRuntimeLocked(ctx)
+		c.logger.Info("Codex companion Go 后端已退出")
+	})
+	return c.shutdownError
+}
+
+func (c *Controller) runtimeSnapshotLocked() RuntimeSnapshot {
+	result := c.runtime
+	if result.Target != nil {
+		copy := *result.Target
+		result.Target = &copy
 	}
-	c.cancel()
-	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
-	defer cancel()
-	_ = c.cdp.CleanupAllTargets(ctx)
-	c.logger.Info("Codex Tweaks Go 后端已退出")
+	result.Recovery.Targets = append([]CDPCleanupTargetResult{}, result.Recovery.Targets...)
+	return result
 }
 
 func uniqueSorted(values []string) []string {

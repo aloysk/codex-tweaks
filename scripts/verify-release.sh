@@ -4,6 +4,13 @@ set -euo pipefail
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
+# shellcheck source=scripts/application-identity.sh
+source "$ROOT_DIR/scripts/application-identity.sh"
+PRODUCT_NAME="$(application_identity name)"
+ARTIFACT_PREFIX="$(application_identity artifactPrefix)"
+EXPECTED_BUNDLE_IDENTIFIER="$(application_identity bundleIdentifier)"
+UPDATES_ENABLED="$(application_identity updatesEnabled)"
+
 RELEASE_TAG="${RELEASE_TAG:-${1:-}}"
 BUILD_NUMBER="${BUILD_NUMBER:-1}"
 DIST_DIR="${DIST_DIR:-dist}"
@@ -85,12 +92,13 @@ verify_signing_certificate() {
 verify_app() {
   local app_path="$1"
   local expected_archs="$2"
-  local binary="$app_path/Contents/MacOS/Codex Tweaks"
+  local binary="$app_path/Contents/MacOS/${PRODUCT_NAME}"
   local backend="$app_path/Contents/Resources/codex-tweaks-backend"
   local actual_archs
   local actual_version
   local actual_release_version
   local actual_build
+  local actual_bundle_identifier
   local automatic_checks
   local allows_automatic_updates
   local automatically_downloads_updates
@@ -138,6 +146,11 @@ verify_app() {
   actual_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app_path/Contents/Info.plist")"
   actual_release_version="$(/usr/libexec/PlistBuddy -c 'Print :CodexTweaksReleaseVersion' "$app_path/Contents/Info.plist")"
   actual_build="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app_path/Contents/Info.plist")"
+  actual_bundle_identifier="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app_path/Contents/Info.plist")"
+  if [[ "$actual_bundle_identifier" != "$EXPECTED_BUNDLE_IDENTIFIER" ]]; then
+    echo "${app_path} bundle identity mismatch: expected ${EXPECTED_BUNDLE_IDENTIFIER}, got ${actual_bundle_identifier}" >&2
+    return 1
+  fi
   if [[ "$actual_version" != "$MARKETING_VERSION" ]] \
     || [[ "$actual_release_version" != "$RELEASE_VERSION" ]] \
     || [[ "$actual_build" != "$BUILD_NUMBER" ]]; then
@@ -148,11 +161,18 @@ verify_app() {
   automatic_checks="$(/usr/libexec/PlistBuddy -c 'Print :SUEnableAutomaticChecks' "$app_path/Contents/Info.plist")"
   allows_automatic_updates="$(/usr/libexec/PlistBuddy -c 'Print :SUAllowsAutomaticUpdates' "$app_path/Contents/Info.plist")"
   automatically_downloads_updates="$(/usr/libexec/PlistBuddy -c 'Print :SUAutomaticallyUpdate' "$app_path/Contents/Info.plist")"
-  if [[ "$automatic_checks" != true ]] \
+  if [[ "$automatic_checks" != false ]] \
     || [[ "$allows_automatic_updates" != false ]] \
     || [[ "$automatically_downloads_updates" != false ]]; then
-    echo "${app_path} 更新策略错误：应默认检查、发现后询问且不后台下载" >&2
+    echo "${app_path} 更新策略错误：应默认关闭检查、自动安装和后台下载" >&2
     return 1
+  fi
+  if [[ "$UPDATES_ENABLED" != true ]]; then
+    if /usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$app_path/Contents/Info.plist" >/dev/null 2>&1 \
+      || /usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$app_path/Contents/Info.plist" >/dev/null 2>&1; then
+      echo "${app_path} disabled updates must not contain an update feed or signing key." >&2
+      return 1
+    fi
   fi
 
   codesign --verify --strict --verbose=2 "$backend"
@@ -162,14 +182,14 @@ verify_app() {
   echo "已校验 ${app_path}：${actual_archs}，macOS ${EXPECTED_MINOS}+"
 }
 
-verify_app "${DIST_DIR}/Codex Tweaks.app" "arm64 x86_64"
-verify_app "${DIST_DIR}/Codex Tweaks-arm64.app" arm64
-verify_app "${DIST_DIR}/Codex Tweaks-x86_64.app" x86_64
+verify_app "${DIST_DIR}/${PRODUCT_NAME}.app" "arm64 x86_64"
+verify_app "${DIST_DIR}/${PRODUCT_NAME}-arm64.app" arm64
+verify_app "${DIST_DIR}/${PRODUCT_NAME}-x86_64.app" x86_64
 
 for dmg in \
-  "${DIST_DIR}/Codex-Tweaks-${RELEASE_TAG}.dmg" \
-  "${DIST_DIR}/Codex-Tweaks-${RELEASE_TAG}-arm64.dmg" \
-  "${DIST_DIR}/Codex-Tweaks-${RELEASE_TAG}-x86_64.dmg"; do
+  "${DIST_DIR}/${ARTIFACT_PREFIX}-${RELEASE_TAG}.dmg" \
+  "${DIST_DIR}/${ARTIFACT_PREFIX}-${RELEASE_TAG}-arm64.dmg" \
+  "${DIST_DIR}/${ARTIFACT_PREFIX}-${RELEASE_TAG}-x86_64.dmg"; do
   if [[ ! -f "$dmg" ]]; then
     echo "缺少 DMG：$dmg" >&2
     exit 1

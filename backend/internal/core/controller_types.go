@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"net/http"
 	"sort"
 )
@@ -16,6 +17,7 @@ const (
 	StatusWaitingForPage  AppStatusKind = "waitingForPage"
 	StatusConnected       AppStatusKind = "connected"
 	StatusDisabled        AppStatusKind = "disabled"
+	StatusRecoveryPending AppStatusKind = "recoveryPending"
 	StatusError           AppStatusKind = "error"
 )
 
@@ -136,6 +138,7 @@ type AppSnapshot struct {
 	ProtocolVersion            int                           `json:"protocolVersion"`
 	Presentation               PresentationContract          `json:"presentation"`
 	Status                     AppStatus                     `json:"status"`
+	Runtime                    RuntimeSnapshot               `json:"runtime"`
 	Enabled                    bool                          `json:"enabled"`
 	DisableGPUAcceleration     bool                          `json:"disableGPUAcceleration"`
 	DeveloperMode              bool                          `json:"developerMode"`
@@ -178,8 +181,32 @@ type ControllerDependencies struct {
 	HTTPClient        *http.Client
 	Platform          Platform
 	Logger            *Logger
-	CDP               *CDPService
+	CDP               CDPRuntime
 	DisableBackground bool
+}
+
+// CDPRuntime separates process observation and user intent from renderer I/O.
+// Tests provide a synthetic runtime rather than probing the user's loopback port.
+type CDPRuntime interface {
+	BindTarget(context.Context, *CodexProcessIdentity) error
+	Inject(context.Context, Payload, int) (CDPInjectionResult, error)
+	CleanupAllTargets(context.Context) (CDPCleanupResult, error)
+	ReloadAllTargets(context.Context) (CDPReloadResult, error)
+	SetNodeInvoker(NodeInvoker)
+	EmitNodeEvent(NodeRuntimeEvent)
+}
+
+type RecoverySnapshot struct {
+	InjectionStopped bool                     `json:"injectionStopped"`
+	PageCleanup      string                   `json:"pageCleanup"`
+	DebugListener    string                   `json:"debugListener"`
+	Targets          []CDPCleanupTargetResult `json:"targets"`
+}
+
+type RuntimeSnapshot struct {
+	Target          *CodexProcessIdentity `json:"target,omitempty"`
+	AttachSupported bool                  `json:"attachSupported"`
+	Recovery        RecoverySnapshot      `json:"recovery"`
 }
 
 func sortedTrueKeys(values map[string]bool) []string {

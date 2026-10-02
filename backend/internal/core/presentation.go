@@ -113,7 +113,6 @@ func NewPresentationContractForPlatform(state PresentationState, operatingSystem
 	text := PresentationTextForLocale(locale)
 	languageOrder, languageOptions := AppLanguageOptions(text)
 	cdpAvailable := state.Status.Kind == StatusWaitingForPage || state.Status.Kind == StatusConnected || state.Status.Kind == StatusDisabled
-	uiRestartAvailable := state.Status.Kind == StatusConnected || state.Status.Kind == StatusDisabled || state.Status.Kind == StatusError
 	packageTransferBusy := state.InstallingLocalPackage || state.InstallingRemotePackage || state.ExportingPackage || state.DeletingPackage
 	strategy := "openDownload"
 	if operatingSystem == "darwin" {
@@ -131,8 +130,8 @@ func NewPresentationContractForPlatform(state PresentationState, operatingSystem
 		Tokens:             PresentationTokensForPlatform(operatingSystem),
 		Actions: AvailableActions{
 			OpenCodex:                  true,
-			RestartCodex:               state.Status.Kind == StatusRestartRequired,
-			RestartCodexUI:             uiRestartAvailable && !state.RestartingCodexUI,
+			RestartCodex:               state.Status.Kind == StatusRestartRequired || state.Status.Kind == StatusCodexNotRunning,
+			RestartCodexUI:             false,
 			Reinject:                   state.Enabled && cdpAvailable && !state.RestartingCodexUI,
 			OpenPackagesDirectory:      true,
 			OpenLogFile:                true,
@@ -149,10 +148,10 @@ func NewPresentationContractForPlatform(state PresentationState, operatingSystem
 			RefreshLog:                 true,
 			ClearLog:                   state.LogAvailable,
 			ReadAuthoringPrompt:        state.AuthoringPromptAvailable,
-			CheckAppUpdate:             !state.UpdateChecking,
-			SetUpdatePreferences:       !state.UpdateChecking,
+			CheckAppUpdate:             ApplicationUpdatesEnabled && !state.UpdateChecking,
+			SetUpdatePreferences:       ApplicationUpdatesEnabled && !state.UpdateChecking,
 			SetLanguage:                true,
-			InstallAppUpdate:           operatingSystem == "windows" || state.UpdateAvailable,
+			InstallAppUpdate:           ApplicationUpdatesEnabled && (operatingSystem == "windows" || state.UpdateAvailable),
 		},
 		Status: statusPresentation(state.Status, text),
 		Platform: PlatformPresentation{
@@ -201,6 +200,10 @@ func statusPresentation(status AppStatus, text map[string]string) StatusPresenta
 		result.Title = text["status.disabled.title"]
 		result.Detail = text["overview.disabledDetail"]
 		result.Tone = "neutral"
+	case StatusRecoveryPending:
+		result.Title = text["status.recoveryPending.title"]
+		result.Detail = text["status.recoveryPending.detail"]
+		result.Tone = "warning"
 	case StatusError:
 		result.Title = text["status.error.title"]
 		result.Detail = text["overview.errorDetail"]
@@ -244,13 +247,15 @@ func PresentationTokensForPlatform(operatingSystem string) PresentationTokens {
 
 func presentationTextZhCN() map[string]string {
 	return map[string]string{
-		"app.name":                                    "Codex Tweaks",
+		"app.name":                                    ApplicationName,
 		"app.backendMissing":                          "应用目录中缺少 Go 后端可执行文件。",
 		"app.backendNotRunning":                       "Go 后端尚未运行。",
 		"app.backendTerminated":                       "Go 后端已退出（状态码 {status}）。",
 		"app.backendMalformed":                        "Go 后端返回了无法解析的响应。",
 		"app.backendDateMalformed":                    "无法解析 Go 后端返回的日期：{value}",
 		"app.backendRequestFailed":                    "Go 后端请求失败。",
+		"app.backendTimedOut":                         "Go 后端响应超时。",
+		"app.backendShutdownIncomplete":               "尚未确认页面清理完成，请检查恢复状态。",
 		"app.backendRequestCreateFailed":              "无法创建 Go 后端请求。",
 		"app.protocolMismatch":                        "Go 后端协议版本不匹配。",
 		"nav.overview":                                "概览",
@@ -261,20 +266,22 @@ func presentationTextZhCN() map[string]string {
 		"status.launchingCodex.title":                 "正在启动 Codex",
 		"status.codexNotRunning.title":                "Codex 未运行",
 		"status.waitingForCDP.title":                  "正在等待调试端口",
-		"status.restartRequired.title":                "Codex 需要重启",
+		"status.restartRequired.title":                "需要准备增强连接",
 		"status.waitingForPage.title":                 "正在等待 Codex 页面",
 		"status.connected.one":                        "已连接 Codex",
 		"status.connected.many":                       "已连接 {count} 个窗口",
 		"status.disabled.title":                       "界面增强已停用",
 		"status.error.title":                          "连接异常",
-		"status.restartRequired.detail":               "当前 Codex 未开启本地 CDP 端口",
-		"status.waitingForPage.detail":                "调试端口可用，尚未发现 app:// 页面",
-		"status.codexNotRunning.detail":               "可以重新打开 Codex",
+		"status.recoveryPending.title":                "恢复待确认",
+		"status.recoveryPending.detail":               "继续注入已停止，但尚未确认所有页面资源已清理。可以重试；关闭调试监听需正常退出后从官方入口重开。",
+		"status.restartRequired.detail":               "请先保存工作并正常退出 Codex，再明确启动增强模式；现有窗口不会被自动关闭。",
+		"status.waitingForPage.detail":                "调试端口归属已核验，正在等待官方 Codex 主页面。",
+		"status.codexNotRunning.detail":               "可以正常打开 Codex，或选择启动增强模式；后台观察不会自动启动它。",
 		"overview.title":                              "管理 Codex 的本地界面增强",
 		"overview.subtitle":                           "连接状态、注入控制与常用入口集中在一个窗口中。",
 		"overview.control":                            "控制",
 		"overview.enable":                             "启用界面增强",
-		"overview.enableDetail":                       "停用后会清理已注入的样式、组件和事件监听器。",
+		"overview.enableDetail":                       "停止继续注入并核验页面清理；清理失败会保留待确认结果，可重试。",
 		"overview.disableGPUAcceleration":             "禁用 Codex GPU 加速",
 		"overview.disableGPUAccelerationDetail":       "默认关闭；仅在 Codex 出现图形渲染、透明窗口或界面合成异常时尝试启用。下次启动或重启 Codex 生效；会切换到 CPU 软件渲染，可能降低图形性能并增加 CPU 占用。",
 		"overview.hideDockIcon":                       "隐藏 Dock 图标",
@@ -283,7 +290,7 @@ func presentationTextZhCN() map[string]string {
 		"overview.hideMenuBarIconDetail":              "隐藏后仍会继续后台注入；可从“应用程序”重新打开 Codex Tweaks 以恢复窗口。",
 		"overview.reinject":                           "重新注入",
 		"overview.restartCodexUI":                     "重启 Codex 界面",
-		"overview.restartCodexUIDetail":               "只重新加载界面，不退出 Codex；界面被功能包卡住时可用来恢复。",
+		"overview.restartCodexUIDetail":               "请保存工作并正常退出官方 Codex，然后重新打开。",
 		"overview.managePackages":                     "管理功能包",
 		"overview.viewLogs":                           "查看日志",
 		"overview.aiAuthoring":                        "交给 AI 编写",
@@ -295,7 +302,7 @@ func presentationTextZhCN() map[string]string {
 		"overview.connection":                         "连接方式",
 		"overview.cdpEndpoint":                        "CDP 端点",
 		"overview.injectionScope":                     "注入范围",
-		"overview.appPagesOnly":                       "仅 app:// 页面",
+		"overview.appPagesOnly":                       "已核验身份的官方 Codex 主页面",
 		"overview.refreshPolicy":                      "刷新策略",
 		"overview.refreshEveryTwoSeconds":             "每 2 秒检查功能包与窗口",
 		"overview.loadOrder":                          "包加载顺序",
@@ -303,12 +310,12 @@ func presentationTextZhCN() map[string]string {
 		"overview.resources":                          "资源目录",
 		"overview.openPackagesDirectory":              "在文件管理器中管理功能包",
 		"overview.openCodex":                          "打开 Codex",
-		"overview.restartAndConnect":                  "重启并连接",
+		"overview.restartAndConnect":                  "启动增强模式",
 		"overview.connectedDetail":                    "已编译且启用的功能包已应用到 Codex。",
-		"overview.disabledDetail":                     "Codex 保持运行，但不会应用任何自定义内容。",
+		"overview.disabledDetail":                     "继续注入已停止。页面清理结果与调试监听状态分别核验；关闭监听需要正常退出后从官方入口重开。",
 		"overview.connectingDetail":                   "Codex Tweaks 正在建立本地连接。",
 		"overview.openCodexDetail":                    "打开 Codex 后会自动建立连接。",
-		"overview.restartDetail":                      "需要重新启动 Codex 才能开启本地调试端口。",
+		"overview.restartDetail":                      "请保存工作并正常退出现有 Codex 后重试；增强模式会开启本地调试监听。",
 		"overview.errorDetail":                        "请查看运行日志了解详细原因。",
 		"packages.title":                              "管理页面增强",
 		"packages.subtitle":                           "每个目录是一个独立包。源码更新不会直接生效，手动编译成功后才会原子切换。",
@@ -538,6 +545,7 @@ func presentationTextZhCN() map[string]string {
 		"update.downloadProgress":                     "正在下载更新：{progress}%",
 		"update.installingProgress":                   "下载完成，正在安装并重启…",
 		"update.notInstalled":                         "当前是便携构建；请先使用 Setup.exe 安装后再使用自动更新。",
+		"update.notConfigured":                        "此构建尚未配置应用更新，请使用本项目明确发布的版本。",
 		"update.installFailed":                        "安装更新失败：{message}",
 		"update.checkFailed":                          "检查更新失败：{message}",
 		"update.checkFirst":                           "请先检查更新。",

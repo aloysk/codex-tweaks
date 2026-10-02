@@ -4,6 +4,20 @@ using System.Text.Json.Serialization;
 
 namespace CodexTweaks.Windows.Generated;
 
+internal static class BackendProtocolContract
+{
+    internal const int ProtocolVersion = 11;
+    internal const int ShutdownGraceSeconds = 5;
+}
+
+internal static class ApplicationIdentity
+{
+    internal const string Name = "Codex Tweaks Companion";
+    internal const string BundleIdentifier = "io.github.aloysk.codexcompanion";
+    internal const string EnvironmentPrefix = "CODEX_COMPANION_";
+    internal static readonly bool UpdatesEnabled = false;
+}
+
 internal static class PresentationTextKey
 {
     internal const string AppBackendDateMalformed = "app.backendDateMalformed";
@@ -12,7 +26,9 @@ internal static class PresentationTextKey
     internal const string AppBackendNotRunning = "app.backendNotRunning";
     internal const string AppBackendRequestCreateFailed = "app.backendRequestCreateFailed";
     internal const string AppBackendRequestFailed = "app.backendRequestFailed";
+    internal const string AppBackendShutdownIncomplete = "app.backendShutdownIncomplete";
     internal const string AppBackendTerminated = "app.backendTerminated";
+    internal const string AppBackendTimedOut = "app.backendTimedOut";
     internal const string AppName = "app.name";
     internal const string AppProtocolMismatch = "app.protocolMismatch";
     internal const string CommonCancel = "common.cancel";
@@ -267,6 +283,8 @@ internal static class PresentationTextKey
     internal const string StatusDisabledTitle = "status.disabled.title";
     internal const string StatusErrorTitle = "status.error.title";
     internal const string StatusLaunchingCodexTitle = "status.launchingCodex.title";
+    internal const string StatusRecoveryPendingDetail = "status.recoveryPending.detail";
+    internal const string StatusRecoveryPendingTitle = "status.recoveryPending.title";
     internal const string StatusRestartRequiredDetail = "status.restartRequired.detail";
     internal const string StatusRestartRequiredTitle = "status.restartRequired.title";
     internal const string StatusStartingTitle = "status.starting.title";
@@ -299,6 +317,7 @@ internal static class PresentationTextKey
     internal const string UpdateNever = "update.never";
     internal const string UpdateNoRelease = "update.noRelease";
     internal const string UpdateNoneAvailable = "update.noneAvailable";
+    internal const string UpdateNotConfigured = "update.notConfigured";
     internal const string UpdateNotInstalled = "update.notInstalled";
     internal const string UpdatePromptMessage = "update.promptMessage";
     internal const string UpdateRepository = "update.repository";
@@ -523,8 +542,10 @@ internal static class PresentationDefaults
         [PresentationTextKey.AppBackendNotRunning] = "The Go backend is not running.",
         [PresentationTextKey.AppBackendRequestCreateFailed] = "Could not create the Go backend request.",
         [PresentationTextKey.AppBackendRequestFailed] = "The Go backend request failed.",
+        [PresentationTextKey.AppBackendShutdownIncomplete] = "Page cleanup has not been confirmed. Check the recovery status.",
         [PresentationTextKey.AppBackendTerminated] = "The Go backend exited with status {status}.",
-        [PresentationTextKey.AppName] = "Codex Tweaks",
+        [PresentationTextKey.AppBackendTimedOut] = "The Go backend response timed out.",
+        [PresentationTextKey.AppName] = "Codex Tweaks Companion",
         [PresentationTextKey.AppProtocolMismatch] = "The Go backend protocol version does not match.",
         [PresentationTextKey.CommonCancel] = "Cancel",
         [PresentationTextKey.CommonClose] = "Close",
@@ -562,7 +583,7 @@ internal static class PresentationDefaults
         [PresentationTextKey.NavPackages] = "Packages",
         [PresentationTextKey.NavUpdates] = "About & Updates",
         [PresentationTextKey.OverviewAiAuthoring] = "Create with AI",
-        [PresentationTextKey.OverviewAppPagesOnly] = "app:// pages only",
+        [PresentationTextKey.OverviewAppPagesOnly] = "Verified official Codex main page",
         [PresentationTextKey.OverviewCdpEndpoint] = "CDP endpoint",
         [PresentationTextKey.OverviewConnectedDetail] = "Compiled and enabled packages have been applied to Codex.",
         [PresentationTextKey.OverviewConnectingDetail] = "Codex Tweaks is establishing a local connection.",
@@ -575,9 +596,9 @@ internal static class PresentationDefaults
         [PresentationTextKey.OverviewCopySkillDetail] = "The copied content comes directly from the project's shared SKILL.md, so it always uses the same package protocol, dependencies, and validation rules. Add your specific request after pasting it.",
         [PresentationTextKey.OverviewDisableGPUAcceleration] = "Disable Codex GPU acceleration",
         [PresentationTextKey.OverviewDisableGPUAccelerationDetail] = "Off by default. Try enabling it only when Codex has graphics-rendering, transparent-window, or interface-compositing issues. It takes effect the next time Codex starts or restarts, switches to CPU software rendering, and may reduce graphics performance or increase CPU usage.",
-        [PresentationTextKey.OverviewDisabledDetail] = "Codex remains open, but no custom content is applied.",
+        [PresentationTextKey.OverviewDisabledDetail] = "Further injection is stopped. Page cleanup and debug listener state are verified separately; exit normally and reopen from the official entry point to close the listener.",
         [PresentationTextKey.OverviewEnable] = "Enable interface enhancements",
-        [PresentationTextKey.OverviewEnableDetail] = "Turning this off removes injected styles, components, and event listeners.",
+        [PresentationTextKey.OverviewEnableDetail] = "Stop further injection and verify cleanup. Failed cleanup remains pending and can be retried.",
         [PresentationTextKey.OverviewErrorDetail] = "See the runtime logs for details.",
         [PresentationTextKey.OverviewHideDockIcon] = "Hide Dock icon",
         [PresentationTextKey.OverviewHideDockIconDetail] = "Also hides the app from the Command-Tab app switcher. Background injection continues after closing the window; reopen Codex Tweaks to restore it.",
@@ -594,10 +615,10 @@ internal static class PresentationDefaults
         [PresentationTextKey.OverviewRefreshPolicy] = "Refresh policy",
         [PresentationTextKey.OverviewReinject] = "Inject again",
         [PresentationTextKey.OverviewResources] = "Resource directory",
-        [PresentationTextKey.OverviewRestartAndConnect] = "Restart and connect",
+        [PresentationTextKey.OverviewRestartAndConnect] = "Start enhanced mode",
         [PresentationTextKey.OverviewRestartCodexUI] = "Restart the Codex interface",
-        [PresentationTextKey.OverviewRestartCodexUIDetail] = "Reloads the interface without quitting Codex. Use this if a package has made the interface unresponsive.",
-        [PresentationTextKey.OverviewRestartDetail] = "Codex must be restarted to enable the local debug port.",
+        [PresentationTextKey.OverviewRestartCodexUIDetail] = "Save your work and exit the official Codex app normally, then reopen it.",
+        [PresentationTextKey.OverviewRestartDetail] = "Save your work and exit Codex normally, then retry. Enhanced mode opens a local debug listener.",
         [PresentationTextKey.OverviewSubtitle] = "Connection status, injection controls, and common actions in one place.",
         [PresentationTextKey.OverviewTitle] = "Manage local interface enhancements for Codex",
         [PresentationTextKey.OverviewViewLogs] = "View logs",
@@ -778,11 +799,13 @@ internal static class PresentationDefaults
         [PresentationTextKey.StatusDisabledTitle] = "Interface enhancements are off",
         [PresentationTextKey.StatusErrorTitle] = "Connection error",
         [PresentationTextKey.StatusLaunchingCodexTitle] = "Starting Codex",
-        [PresentationTextKey.StatusRestartRequiredDetail] = "Codex is not currently exposing its local CDP port",
-        [PresentationTextKey.StatusRestartRequiredTitle] = "Codex must be restarted",
+        [PresentationTextKey.StatusRecoveryPendingDetail] = "Page cleanup is not fully confirmed. Retry cleanup; close the debug listener by exiting normally and reopening from the official entry point.",
+        [PresentationTextKey.StatusRecoveryPendingTitle] = "Recovery pending",
+        [PresentationTextKey.StatusRestartRequiredDetail] = "Save your work and exit Codex normally before starting enhanced mode. Existing windows remain open.",
+        [PresentationTextKey.StatusRestartRequiredTitle] = "Enhanced connection needs preparation",
         [PresentationTextKey.StatusStartingTitle] = "Starting",
         [PresentationTextKey.StatusWaitingForCDPTitle] = "Waiting for the debug port",
-        [PresentationTextKey.StatusWaitingForPageDetail] = "The debug port is available, but no app:// page was found",
+        [PresentationTextKey.StatusWaitingForPageDetail] = "Listener ownership is verified; waiting for the official Codex main page.",
         [PresentationTextKey.StatusWaitingForPageTitle] = "Waiting for a Codex page",
         [PresentationTextKey.UpdateApplyProgress] = "Downloading and installing the full update…",
         [PresentationTextKey.UpdateAutoCheck] = "Automatically check for updates and ask before downloading and installing a new version",
@@ -810,6 +833,7 @@ internal static class PresentationDefaults
         [PresentationTextKey.UpdateNever] = "Never",
         [PresentationTextKey.UpdateNoRelease] = "There is no GitHub Release available in this channel.",
         [PresentationTextKey.UpdateNoneAvailable] = "There is no update to install.",
+        [PresentationTextKey.UpdateNotConfigured] = "Application updates are not configured for this build. Use a release published by this project.",
         [PresentationTextKey.UpdateNotInstalled] = "This is a portable build. Install the app with Setup.exe before using automatic updates.",
         [PresentationTextKey.UpdatePromptMessage] = "You have {current}. Version {latest} is available. Download and install it now?",
         [PresentationTextKey.UpdateRepository] = "Project page",

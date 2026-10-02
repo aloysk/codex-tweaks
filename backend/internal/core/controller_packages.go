@@ -1,11 +1,15 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"sort"
 )
 
 func (c *Controller) updatePackages() error {
+	if err := c.ctx.Err(); err != nil {
+		return err
+	}
 	packages, err := c.store.LoadPackages()
 	if err != nil {
 		return err
@@ -18,6 +22,10 @@ func (c *Controller) updatePackages() error {
 	}
 
 	c.mu.Lock()
+	if c.shuttingDown || c.ctx.Err() != nil {
+		c.mu.Unlock()
+		return context.Canceled
+	}
 	known := map[string]bool{}
 	hasKnownBaseline := c.config.KnownPackageIDs != nil
 	if c.config.KnownPackageIDs != nil {
@@ -26,8 +34,15 @@ func (c *Controller) updatePackages() error {
 	reconciliation := ReconcileEnablement(discovered, known, c.disabledPackageIDs, hasKnownBaseline)
 	newIDs := sortedTrueKeys(reconciliation.NewlyDiscoveredPackageIDs)
 	knownIDs := sortedTrueKeys(reconciliation.KnownPackageIDs)
-	c.config.KnownPackageIDs = &knownIDs
+	next := c.config
+	next.KnownPackageIDs = &knownIDs
+	previousDisabled := c.disabledPackageIDs
 	c.disabledPackageIDs = reconciliation.DisabledPackageIDs
+	if err := c.persistConfigurationCandidateLocked(next); err != nil {
+		c.disabledPackageIDs = previousDisabled
+		c.mu.Unlock()
+		return err
+	}
 	resolution := ResolveDependencies(packages, c.disabledPackageIDs)
 	c.packageDependencyStatuses = resolution.DependenciesByPackageID
 	c.packageDependencyIssues = resolution.IssuesByPackageID
@@ -57,8 +72,7 @@ func (c *Controller) updatePackages() error {
 			delete(c.packageBuildErrorRequestKeys, packageID)
 		}
 	}
-	err = c.persistConfigurationLocked()
-	if err == nil && nodeAuthorizationsChanged {
+	if nodeAuthorizationsChanged {
 		err = c.store.SaveNodeAuthorizations(c.nodeAuthorizations)
 	}
 	c.mu.Unlock()
@@ -84,27 +98,62 @@ func (c *Controller) packageByID(packageID string) (Package, bool) {
 
 func (c *Controller) SetEnabled(enabled bool) error {
 	c.mu.Lock()
-	if c.config.Enabled == enabled {
+	if c.shuttingDown {
+		c.mu.Unlock()
+		return errors.New("companion is shutting down")
+	}
+	if c.config.Enabled == enabled && (enabled || c.disabledCleanupCompleted) {
 		c.mu.Unlock()
 		return nil
 	}
-	c.config.Enabled = enabled
-	err := c.persistConfigurationLocked()
-	c.mu.Unlock()
-	if !enabled && c.nodeRuntime != nil {
-		c.nodeRuntime.StopAll()
-	}
-	if err != nil {
+	next := c.config
+	next.Enabled = enabled
+	if err := c.persistConfigurationCandidateLocked(next); err != nil {
+		c.mu.Unlock()
 		return err
 	}
+	c.runtimeEpoch++
+	if c.nodeCancel != nil {
+		c.nodeCancel()
+	}
+	if enabled {
+		c.nodeLifetime, c.nodeCancel = context.WithCancel(c.ctx)
+	}
+	if c.injectCancel != nil {
+		c.injectCancel()
+	}
+	c.disabledCleanupCompleted = false
+	if !enabled {
+		c.status = AppStatus{Kind: StatusRecoveryPending, Message: stringPointer("正在停止继续注入并核验页面清理")}
+		c.runtime.Recovery.InjectionStopped = false
+		c.runtime.Recovery.PageCleanup = "pending"
+	}
+	c.mu.Unlock()
 	if enabled {
 		c.logger.Info("界面增强已启用")
 	} else {
 		c.logger.Info("界面增强已停用")
 	}
 	c.emit()
-	go c.Refresh()
-	return nil
+	if enabled {
+		go c.Refresh()
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), ShutdownTimeout)
+	defer cancel()
+	if err := lockWithContext(ctx, &c.runtimeMu); err != nil {
+		c.mu.Lock()
+		c.runtime.Recovery.InjectionStopped = false
+		c.runtime.Recovery.PageCleanup = "pending"
+		c.status = AppStatus{Kind: StatusRecoveryPending, Message: stringPointer(err.Error())}
+		c.mu.Unlock()
+		c.emit()
+		return err
+	}
+	err := c.stopRuntimeLocked(ctx)
+	c.runtimeMu.Unlock()
+	c.emit()
+	return err
 }
 
 func (c *Controller) SetDeveloperMode(enabled bool) error {
@@ -113,23 +162,25 @@ func (c *Controller) SetDeveloperMode(enabled bool) error {
 		c.mu.Unlock()
 		return nil
 	}
-	c.config.DeveloperMode = enabled
+	next := c.config
+	next.DeveloperMode = enabled
+	if err := c.persistConfigurationCandidateLocked(next); err != nil {
+		c.mu.Unlock()
+		return err
+	}
 	if !enabled {
 		c.developerAllowUnknownNode = false
 	}
 	c.clearUnauthorizedNodeRuntimeErrorsLocked()
 	c.developerBuildAttemptKeys = map[string]string{}
-	err := c.persistConfigurationLocked()
 	packages := append([]Package(nil), c.packages...)
 	disabled := cloneSet(c.disabledPackageIDs)
 	trust := c.nodeTrustByPackageIDLocked()
 	environment := c.enabledNodeEnvironmentLocked()
+	nodeLifetime := c.nodeLifetime
 	c.mu.Unlock()
 	if c.nodeRuntime != nil {
-		c.nodeRuntime.Reconcile(c.ctx, packages, disabled, trust, environment)
-	}
-	if err != nil {
-		return err
+		c.nodeRuntime.Reconcile(nodeLifetime, packages, disabled, trust, environment)
 	}
 	if enabled {
 		c.logger.Info("开发者模式已启用")
@@ -160,9 +211,10 @@ func (c *Controller) SetDeveloperAllowUnknownNode(enabled bool) error {
 	disabled := cloneSet(c.disabledPackageIDs)
 	trust := c.nodeTrustByPackageIDLocked()
 	environment := c.enabledNodeEnvironmentLocked()
+	nodeLifetime := c.nodeLifetime
 	c.mu.Unlock()
 	if c.nodeRuntime != nil {
-		c.nodeRuntime.Reconcile(c.ctx, packages, disabled, trust, environment)
+		c.nodeRuntime.Reconcile(nodeLifetime, packages, disabled, trust, environment)
 	}
 	if enabled {
 		c.logger.Info("本次运行已允许开发者模式自动执行未知 Node 包")
@@ -222,6 +274,7 @@ func (c *Controller) SetPackageEnabled(packageID string, enabled bool) error {
 		return errors.New("当前正在删除功能包。")
 	}
 	changed := false
+	previousDisabled := cloneSet(c.disabledPackageIDs)
 	if enabled && c.disabledPackageIDs[packageID] {
 		delete(c.disabledPackageIDs, packageID)
 		changed = true
@@ -233,11 +286,16 @@ func (c *Controller) SetPackageEnabled(packageID string, enabled bool) error {
 		c.mu.Unlock()
 		return nil
 	}
+	err := c.persistConfigurationCandidateLocked(c.config)
+	if err != nil {
+		c.disabledPackageIDs = previousDisabled
+		c.mu.Unlock()
+		return err
+	}
 	delete(c.packageRuntimeErrors, packageID)
 	if !enabled {
 		delete(c.nodeAuthorizations, packageID)
 	}
-	err := c.persistConfigurationLocked()
 	if !enabled {
 		if authorizationError := c.store.SaveNodeAuthorizations(c.nodeAuthorizations); err == nil {
 			err = authorizationError
@@ -327,7 +385,12 @@ func (c *Controller) EnableDependencies(packageID string) error {
 	for dependencyID := range enabledIDs {
 		delete(c.disabledPackageIDs, dependencyID)
 	}
-	err := c.persistConfigurationLocked()
+	// Reconcile the enabled set only after its complete candidate is saved.
+	previousDisabled := stringSet(c.config.DisabledPackageIDs)
+	err := c.persistConfigurationCandidateLocked(c.config)
+	if err != nil {
+		c.disabledPackageIDs = previousDisabled
+	}
 	c.mu.Unlock()
 	if err != nil {
 		return err

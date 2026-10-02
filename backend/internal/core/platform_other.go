@@ -13,6 +13,9 @@ type unsupportedPlatform struct{}
 func NewPlatform(CommandRunner) Platform { return unsupportedPlatform{} }
 
 func (unsupportedPlatform) IsCodexRunning(context.Context) (bool, error) { return false, nil }
+func (unsupportedPlatform) ObserveCodex(context.Context) (CodexObservation, error) {
+	return CodexObservation{}, nil
+}
 func (unsupportedPlatform) ActivateCodex(context.Context) error {
 	return errors.New("当前系统尚未实现 Codex 桌面控制")
 }

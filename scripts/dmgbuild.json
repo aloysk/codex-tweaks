@@ -1,6 +1,6 @@
 {
-  "title": "Codex Tweaks",
-  "volume_name": "Codex Tweaks",
+  "title": "Codex Tweaks Companion",
+  "volume_name": "Codex Tweaks Companion",
   "format": "UDZO",
   "background": "scripts/dmg-background.png",
   "files": [],
@@ -23,8 +23,8 @@
       "x": 180,
       "y": 228,
       "type": "file",
-      "path": "dist/Codex Tweaks-arm64.app",
-      "name": "Codex Tweaks.app"
+      "path": "dist/Codex Tweaks Companion-arm64.app",
+      "name": "Codex Tweaks Companion.app"
     },
     {
       "x": 480,

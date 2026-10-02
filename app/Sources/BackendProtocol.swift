@@ -67,6 +67,7 @@ struct BackendAppStatus: Codable, Equatable, Sendable {
         case waitingForPage
         case connected
         case disabled
+        case recoveryPending
         case error
     }
 

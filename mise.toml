@@ -18,13 +18,13 @@ description = "确认 Swift、C# 与 XAML Presentation Contract 生成文件无�
 run = "cd backend && go run ./cmd/contractgen -root .. -check"
 
 [tasks.build]
-description = "构建 Codex Tweaks.app 并输出到 dist/"
+description = "构建 Codex Tweaks Companion.app 并输出到 dist/"
 depends = ["generate"]
 run = [
   "xcodebuild -project CodexTweaks.xcodeproj -scheme CodexTweaks -configuration Release -destination \"platform=macOS,arch=$(uname -m)\" -derivedDataPath build/DerivedData -packageAuthorizationProvider netrc ARCHS=$(uname -m) build",
   "mkdir -p dist",
-  "rm -rf 'dist/Codex Tweaks.app'",
-  "ditto 'build/DerivedData/Build/Products/Release/Codex Tweaks.app' 'dist/Codex Tweaks.app'",
+  "rm -rf 'dist/Codex Tweaks Companion.app'",
+  "ditto 'build/DerivedData/Build/Products/Release/Codex Tweaks Companion.app' 'dist/Codex Tweaks Companion.app'",
 ]
 
 [tasks.test]
@@ -46,7 +46,7 @@ run = [
   "mise run test",
   "mise run build",
   "git diff --check",
-  "git diff --exit-code -- CodexTweaks.xcodeproj contract/presentation-contract.json app/Sources/GeneratedPresentationContract.swift windows/CodexTweaks.Windows/Generated/PresentationContract.g.cs windows/CodexTweaks.Windows/Generated/PresentationResources.xaml",
+  "git diff --exit-code -- CodexTweaks.xcodeproj contract/application-identity.json contract/presentation-contract.json app/Sources/GeneratedPresentationContract.swift windows/CodexTweaks.Windows/Generated/PresentationContract.g.cs windows/CodexTweaks.Windows/Generated/PresentationResources.xaml",
 ]
 
 [tasks."workflows:lint"]
@@ -77,17 +77,17 @@ run = [
 ]
 
 [tasks.launch]
-description = "启动 dist/ 中的 Codex Tweaks.app"
+description = "启动 dist/ 中的 Codex Tweaks Companion.app"
 depends = ["build"]
-run = "open 'dist/Codex Tweaks.app'"
+run = "open 'dist/Codex Tweaks Companion.app'"
 
 [tasks."launch:built"]
-description = "启动已经完成构建的 Codex Tweaks.app"
-run = "open 'dist/Codex Tweaks.app'"
+description = "启动已经完成构建的 Codex Tweaks Companion.app"
+run = "open 'dist/Codex Tweaks Companion.app'"
 
 [tasks.kill]
-description = "停止正在运行的 Codex Tweaks"
-run = "pkill -x 'Codex Tweaks' 2>/dev/null || true"
+description = "停止正在运行的 Codex Tweaks Companion"
+run = "pkill -x 'Codex Tweaks Companion' 2>/dev/null || true"
 
 [tasks.clean]
 description = "清理构建产物"

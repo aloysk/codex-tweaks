@@ -13,6 +13,8 @@ param(
 
     [switch]$RequirePackages,
 
+    [switch]$KeepTemporaryFiles,
+
     [string]$ExpectedSigningCertificateSha256 = ''
 )
 
@@ -20,8 +22,13 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $root = Split-Path -Parent $PSScriptRoot
+$identity = Get-Content -LiteralPath (Join-Path $root 'contract/application-identity.json') -Raw | ConvertFrom-Json
+if ($identity.version -ne 1) { throw 'Unsupported application identity version.' }
 $artifactRoot = Join-Path $root 'artifacts/windows'
+$verificationRoot = Join-Path $artifactRoot 'verification'
+New-Item -ItemType Directory -Force -Path $verificationRoot | Out-Null
 . "$PSScriptRoot/windows-signing-verification.ps1"
+. "$PSScriptRoot/windows-package-identity.ps1"
 
 $expectedSigningSha256 = Normalize-WindowsSigningFingerprint $ExpectedSigningCertificateSha256
 if (-not [string]::IsNullOrWhiteSpace($expectedSigningSha256) -and $expectedSigningSha256.Length -ne 64) {
@@ -36,7 +43,7 @@ function Assert-PackageAuthenticodeSignatures(
         return
     }
 
-    $extractRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("codex-tweaks-nupkg-" + [guid]::NewGuid())
+    $extractRoot = Join-Path $verificationRoot ("package-" + [guid]::NewGuid())
     New-Item -ItemType Directory -Force -Path $extractRoot | Out-Null
     try {
         [System.IO.Compression.ZipFile]::ExtractToDirectory($PackagePath, $extractRoot)
@@ -49,8 +56,9 @@ function Assert-PackageAuthenticodeSignatures(
         }
     }
     finally {
-        if (Test-Path $extractRoot) {
-            Remove-Item -Recurse -Force $extractRoot
+        if ($KeepTemporaryFiles) { Write-Host "Verification files retained: $extractRoot" }
+        elseif (Test-Path -LiteralPath $extractRoot) {
+            Remove-Item -LiteralPath $extractRoot -Recurse -Force
         }
     }
 }
@@ -108,7 +116,7 @@ function Invoke-BackendSmoke([string]$Backend, [string]$Publish, [string]$Expect
         throw "Backend version mismatch: expected $ExpectedVersion, actual $actualVersion"
     }
 
-    $sessionRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("codex-tweaks-smoke-" + [guid]::NewGuid())
+    $sessionRoot = Join-Path $verificationRoot ("sidecar-" + [guid]::NewGuid())
     New-Item -ItemType Directory -Force -Path $sessionRoot | Out-Null
     try {
         $requests = @(
@@ -156,11 +164,11 @@ function Invoke-BackendSmoke([string]$Backend, [string]$Publish, [string]$Expect
         $ping = $rpcResponses | Where-Object { $_.id -eq 1 } | Select-Object -First 1
         $initialize = $rpcResponses | Where-Object { $_.id -eq 2 } | Select-Object -First 1
         $shutdown = $rpcResponses | Where-Object { $_.id -eq 3 } | Select-Object -First 1
-        if ($null -eq $ping -or $ping.result.backend -ne 'go' -or $ping.result.protocolVersion -ne 10) {
-            throw 'Backend ping response did not satisfy protocol v10.'
+        if ($null -eq $ping -or $ping.result.backend -ne 'go' -or $ping.result.protocolVersion -ne $identity.protocolVersion) {
+            throw 'Backend ping response did not satisfy the generated protocol.'
         }
-        if ($null -eq $initialize -or $initialize.result.protocolVersion -ne 10) {
-            throw 'Backend initialize response did not satisfy protocol v10.'
+        if ($null -eq $initialize -or $initialize.result.protocolVersion -ne $identity.protocolVersion) {
+            throw 'Backend initialize response did not satisfy the generated protocol.'
         }
         $shutdownHasError = $null -ne $shutdown `
             -and $shutdown.PSObject.Properties.Name -contains 'error' `
@@ -170,8 +178,9 @@ function Invoke-BackendSmoke([string]$Backend, [string]$Publish, [string]$Expect
         }
     }
     finally {
-        if (Test-Path $sessionRoot) {
-            Remove-Item -Recurse -Force $sessionRoot
+        if ($KeepTemporaryFiles) { Write-Host "Verification files retained: $sessionRoot" }
+        elseif (Test-Path -LiteralPath $sessionRoot) {
+            Remove-Item -LiteralPath $sessionRoot -Recurse -Force
         }
     }
 }
@@ -219,7 +228,7 @@ foreach ($rid in $RuntimeIdentifiers) {
     if ($RequirePackages) {
         $channelName = "win-$architecture-$Channel"
         $releases = Join-Path $artifactRoot "$rid/releases"
-        $setup = Join-Path $releases "Codex-Tweaks-v${Version}-windows-Setup-${downloadArchitecture}.exe"
+        $setup = Join-Path $releases "$($identity.artifactPrefix)-v${Version}-windows-Setup-${downloadArchitecture}.exe"
         if (-not (Test-Path $setup -PathType Leaf)) {
             throw "Missing versioned Velopack installer: $setup"
         }
@@ -227,6 +236,7 @@ foreach ($rid in $RuntimeIdentifiers) {
         if ($fullPackages.Count -ne 1) {
             throw "Expected exactly one Velopack full package for $rid, found $($fullPackages.Count)."
         }
+        Assert-WindowsPackageIdentity $fullPackages[0].FullName "$($identity.bundleIdentifier).$architecture"
         $feeds = @(Get-ChildItem $releases -Filter "releases.$channelName.json" -File)
         if ($feeds.Count -ne 1) {
             throw "Missing Velopack channel feed releases.$channelName.json"

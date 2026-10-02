@@ -131,7 +131,7 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception exception)
         {
-            App.Log($"Window chrome configuration fell back to defaults: {exception.Message}");
+            App.LogException("Window chrome configuration fell back to defaults", exception);
         }
     }
 
@@ -166,7 +166,7 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception exception)
         {
-            App.Log($"Backend startup failed: {exception}");
+            App.LogException("Backend startup failed", exception);
             _trayError = exception.Message;
             LoadingPanel.Visibility = Visibility.Collapsed;
             ShowError(exception.Message);
@@ -386,7 +386,7 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception exception)
         {
-            App.Log($"Backend command {method} failed: {exception}");
+            App.LogException($"Backend command {method} failed", exception);
             if (showError)
             {
                 ShowError(exception.Message);
@@ -602,7 +602,7 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception exception)
         {
-            App.Log($"Copying the authoring prompt failed: {exception}");
+            App.LogException("Copying the authoring prompt failed", exception);
             if (showFeedback)
             {
                 ShowError(exception.Message);

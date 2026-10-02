@@ -1,3 +1,4 @@
+using CodexTweaks.Windows.Generated;
 using Microsoft.Windows.AppLifecycle;
 using Velopack;
 
@@ -23,7 +24,7 @@ internal static class Program
         try
         {
             var currentInstance = AppInstance.GetCurrent();
-            var mainInstance = AppInstance.FindOrRegisterForKey("CodexTweaks.Main");
+            var mainInstance = AppInstance.FindOrRegisterForKey(ApplicationIdentity.BundleIdentifier + ".main");
             if (!mainInstance.IsCurrent)
             {
                 var activationArguments = currentInstance.GetActivatedEventArgs();
@@ -40,7 +41,7 @@ internal static class Program
         }
         catch (Exception exception)
         {
-            App.Log($"Single-instance registration failed; continuing normally: {exception}");
+            App.LogException("Single-instance registration failed; continuing normally", exception);
             return true;
         }
     }

@@ -114,7 +114,7 @@ final class BackendProtocolTests: XCTestCase {
             BackendAppSnapshot.self,
             """
             {
-              "protocolVersion": 10,
+              "protocolVersion": \(BackendProtocolContract.protocolVersion),
               "presentation": \(presentationJSON),
               "status": {"kind": "connected", "targetCount": 1},
               "enabled": true,
@@ -160,7 +160,7 @@ final class BackendProtocolTests: XCTestCase {
             }
             """
         )
-        XCTAssertEqual(snapshot.protocolVersion, 10)
+        XCTAssertEqual(snapshot.protocolVersion, BackendProtocolContract.protocolVersion)
         XCTAssertFalse(snapshot.disableGPUAcceleration)
         XCTAssertEqual(snapshot.presentation.version, 2)
         XCTAssertEqual(snapshot.status.targetCount, 1)
@@ -171,7 +171,7 @@ final class BackendProtocolTests: XCTestCase {
 
     func testGeneratedPresentationContractOwnsSharedCopyTokensAndPlatformConstants() {
         let contract = GeneratedPresentationDefaults.contract
-        XCTAssertEqual(contract.text[PresentationTextKey.appName.rawValue], "Codex Tweaks")
+        XCTAssertEqual(contract.text[PresentationTextKey.appName.rawValue], ApplicationIdentity.name)
         XCTAssertEqual(contract.languagePreference, "auto")
         XCTAssertEqual(contract.locale, "en")
         XCTAssertEqual(contract.languageOrder, ["auto", "zh-CN", "zh-TW", "en", "ja", "ko"])
@@ -184,8 +184,18 @@ final class BackendProtocolTests: XCTestCase {
         )
         XCTAssertEqual(
             contract.platform.repositoryURL,
-            "https://github.com/codex-tweaks/codex-tweaks"
+            "https://github.com/aloysk/codex-tweaks"
         )
+    }
+
+    func testRecoveryPendingDecodesWithoutClaimingRestoration() throws {
+        let status = try decode(
+            BackendAppStatus.self,
+            #"{"kind":"recoveryPending","message":"Cleanup not confirmed"}"#
+        )
+        XCTAssertEqual(status.kind, .recoveryPending)
+        XCTAssertEqual(AppStatus(status), .recoveryPending("Cleanup not confirmed"))
+        XCTAssertFalse(AppStatus(status).isCDPAvailable)
     }
 
     func testFrontendKeepsOnlyNativeStatusSymbolChoice() {
