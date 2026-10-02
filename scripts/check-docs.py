@@ -11,7 +11,7 @@ from urllib.parse import unquote
 ROOT = Path(__file__).resolve().parents[1]
 DOCUMENTS = [ROOT / name for name in (
     "README.md", "AGENTS.md", "PRODUCT.md", "ARCHITECTURE.md", "DESIGN.md",
-    "CONTRIBUTING.md", "docs/windows-ui-brief.md",
+    "CONTRIBUTING.md", "docs/windows-ui-brief.md", "docs/open-items.md",
 )]
 for folder in ("desktop-enhancement", "resources", "development"):
     DOCUMENTS.extend(sorted((ROOT / "docs" / folder).glob("*.md")))
@@ -55,6 +55,8 @@ def check() -> list[str]:
                 "adopt-base", "adopt-tooling", "adapt-concept", "reference", "research", "defer"
             }:
                 errors.append(f"Unknown resource decision: {identity}")
+            if item["access"] not in {"public", "restricted"}:
+                errors.append(f"Unknown resource access: {identity}")
             for copied in item["copiedProductFiles"]:
                 candidate = (ROOT / copied).resolve()
                 if not candidate.is_relative_to(ROOT) or not candidate.is_file():

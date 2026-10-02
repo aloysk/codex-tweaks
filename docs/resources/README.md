@@ -13,7 +13,7 @@ The product combines selected ideas through the existing Go/native/package archi
 | [Codex Tweaks](https://github.com/codex-tweaks/codex-tweaks/tree/2c768f42579463254357ff1afaa4c38fc7d40cb1) | Adopt base | Go sidecar, native clients, package lifecycle and generated presentation contract | MIT; inherited restoration/process/update identity gaps remain explicit in UPSTREAM.md |
 | [pre-commit-template](https://github.com/aloysk/pre-commit-template/tree/73e8483da0e4329f850681f79ea305300a3ed35c) | Adopt tooling | Layered hooks with a project overlay and reproducible bootstrap | MIT; installed development infrastructure, never a product runtime dependency |
 
-The maintainer's local checkouts are `F:/project/Ke-Spectrum-2-Design-System`, `F:/project/zcode-monitor` and `F:/project/pre-commit-template`. They are convenient source references, not required absolute build paths. Another developer can use the pinned remote revisions.
+The maintainer's local checkouts are `F:/project/Ke-Spectrum-2-Design-System`, `F:/project/zcode-monitor` and `F:/project/pre-commit-template`. All three listed maintainer repositories require repository access; their pinned links are provenance for authorized maintainers, not public download dependencies. They are not required absolute build paths. Ordinary clones and CI use the committed project guidance and generated development hooks without fetching these repositories. Refreshing a reference or the template requires an authorized copy of its pinned source.
 
 ## Community feature inputs
 

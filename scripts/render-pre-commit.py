@@ -7,11 +7,6 @@ import importlib.resources
 from pathlib import Path
 import sys
 
-from pre_commit_template import __version__
-from pre_commit_template.config import load_yaml_list
-from pre_commit_template.merger import generate_config, merge_hooks
-from pre_commit_template.overlay import apply_overlay, load_overlay, validate_overlay
-
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE_VERSION = "5.7.0"
 
@@ -22,6 +17,21 @@ def main() -> int:
     mode.add_argument("--check", action="store_true")
     mode.add_argument("--write", action="store_true")
     args = parser.parse_args()
+    try:
+        from pre_commit_template import __version__
+        from pre_commit_template.config import load_yaml_list
+        from pre_commit_template.merger import generate_config, merge_hooks
+        from pre_commit_template.overlay import apply_overlay, load_overlay, validate_overlay
+    except ModuleNotFoundError as error:
+        parser.exit(
+            2,
+            f"Template rendering requires pre-commit-template {TEMPLATE_VERSION} "
+            f"and its dependencies (missing {error.name}).\n"
+            "With authorized source access, run: python scripts/bootstrap-dev.py "
+            "--template-source /path/to/pre-commit-template\n"
+            "Then use the checkout's .venv-dev Python to run this renderer. "
+            "Ordinary hook setup and CI do not require the template.\n",
+        )
     if __version__ != TEMPLATE_VERSION:
         parser.error(f"Expected pre-commit-template {TEMPLATE_VERSION}, got {__version__}")
     package = importlib.resources.files("pre_commit_template")

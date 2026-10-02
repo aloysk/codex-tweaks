@@ -6,17 +6,20 @@ Run from the repository root with Python 3.12 or newer and Git:
 python scripts/bootstrap-dev.py
 ```
 
-The bootstrap creates `.venv-dev`, installs pinned development tooling, checks
-template/config consistency, and installs real `pre-commit` and `commit-msg`
-hooks in this checkout. It does not install the product or modify global Git or
-Python configuration. A competing `core.hooksPath` causes pre-commit to refuse
+The default bootstrap creates `.venv-dev`, installs public pinned pre-commit
+tooling, validates the committed configuration, and installs real `pre-commit`
+and `commit-msg` hooks in this checkout. It uses the generated config and provider
+already in the repository; it does not fetch or install the template source.
+It does not install the product or modify global Git or Python configuration.
+A competing `core.hooksPath` causes pre-commit to refuse
 installation; resolve that intentionally rather than bypassing it.
 
 On Windows, `python` must be a working Python installation, not only the Store
 alias. Use `py -3.12` instead when that is the installed launcher. On macOS or
 Linux, use `python3` if `python` is unavailable. First setup needs network access
-for Python packages and pinned hook repositories; the Gitleaks hook also needs
-Go available on `PATH` (the existing project Go toolchain is sufficient).
+for public Python packages and pinned hook repositories. The Gitleaks hook uses
+Go on `PATH` or lets pre-commit provision Go; CI explicitly selects the project
+Go toolchain.
 
 ## Run the checks
 
@@ -24,14 +27,12 @@ Windows PowerShell:
 
 ```powershell
 .\.venv-dev\Scripts\python.exe -m pre_commit run --all-files --show-diff-on-failure
-.\.venv-dev\Scripts\python.exe scripts/render-pre-commit.py --check
 ```
 
 macOS, Linux, and the lightweight CI job:
 
 ```sh
 .venv-dev/bin/python -m pre_commit run --all-files --show-diff-on-failure
-.venv-dev/bin/python scripts/render-pre-commit.py --check
 ```
 
 Ordinary commits check staged files and require a Conventional Commit header,
@@ -59,9 +60,11 @@ The copied providers retain their MIT notice in
 `.githooks/LICENSE.pre-commit-template`.
 Installation used `--profile csharp --no-ci --no-setup-hooks`, first with
 `--dry-run`, then without it. Existing CI and the generated-source LF rules in
-`.gitattributes` were preserved. The bootstrap pins pre-commit 4.6.0, PyYAML
-6.0.3, tomlkit 0.15.1, and the template Git commit. To use a clean local copy of
-that same source instead of fetching it:
+`.gitattributes` were preserved. Default bootstrap pins public pre-commit 4.6.0
+and PyYAML 6.0.3. Template rendering is a separate maintainer operation requiring
+authorized access to a clean local checkout at the pinned template commit; it
+is not required to contribute or run CI. The explicit option below additionally
+installs that local source and tomlkit 0.15.1, then checks generated consistency:
 
 ```sh
 python scripts/bootstrap-dev.py --template-source /path/to/pre-commit-template
@@ -94,7 +97,20 @@ preserved; actual hook activation must be checked separately.
 
 ## Change or refresh the configuration
 
-Edit the overlay, then run the following with the checkout's `.venv-dev` Python:
+Only maintainers with authorized template source access regenerate these files.
+Prepare the optional dependency before editing the overlay:
+
+```sh
+python scripts/bootstrap-dev.py --template-source /path/to/pre-commit-template
+```
+
+The source must be clean at the pinned commit; a different or modified checkout
+is refused. No token or private-repository fetch is part of default bootstrap.
+Ordinary contributors and CI run the committed generated hooks without importing
+the template or running the renderer.
+
+After editing the overlay, run the following with the checkout's `.venv-dev`
+Python (`.venv-dev/Scripts/python.exe` on Windows, `.venv-dev/bin/python` elsewhere):
 
 ```sh
 python scripts/render-pre-commit.py --write

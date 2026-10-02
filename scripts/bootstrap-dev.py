@@ -11,9 +11,6 @@ import venv
 
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE_COMMIT = "73e8483da0e4329f850681f79ea305300a3ed35c"
-TEMPLATE_URL = (
-    "git+https://github.com/aloysk/pre-commit-template.git@" + TEMPLATE_COMMIT
-)
 
 
 def run(*command: str) -> None:
@@ -25,20 +22,23 @@ def main() -> None:
     parser.add_argument(
         "--template-source",
         type=Path,
-        help="Use a clean local clone of the pinned template commit instead of GitHub",
+        help="Install the optional renderer from an authorized clean local template clone",
     )
     args = parser.parse_args()
     if sys.version_info < (3, 12):
         parser.error("Python 3.12 or newer is required")
-    template_source = TEMPLATE_URL
+    template_source = None
     if args.template_source is not None:
         source = args.template_source.resolve()
-        revision = subprocess.check_output(
-            ["git", "-C", str(source), "rev-parse", "HEAD"], text=True
-        ).strip()
-        dirty = subprocess.check_output(
-            ["git", "-C", str(source), "status", "--porcelain"], text=True
-        ).strip()
+        try:
+            revision = subprocess.check_output(
+                ["git", "-C", str(source), "rev-parse", "HEAD"], text=True
+            ).strip()
+            dirty = subprocess.check_output(
+                ["git", "-C", str(source), "status", "--porcelain"], text=True
+            ).strip()
+        except subprocess.CalledProcessError:
+            parser.error("--template-source must point to a local Git checkout")
         if revision != TEMPLATE_COMMIT or dirty:
             parser.error("Local template must be clean at " + TEMPLATE_COMMIT)
         template_source = str(source)
@@ -47,11 +47,12 @@ def main() -> None:
     python = environment / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
     if not python.exists():
         venv.create(environment, with_pip=True)
-    run(
-        str(python), "-m", "pip", "install",
-        "pre-commit==4.6.0", "PyYAML==6.0.3", "tomlkit==0.15.1", template_source,
-    )
-    run(str(python), "scripts/render-pre-commit.py", "--check")
+    dependencies = ["pre-commit==4.6.0", "PyYAML==6.0.3"]
+    if template_source is not None:
+        dependencies.extend(["tomlkit==0.15.1", template_source])
+    run(str(python), "-m", "pip", "install", *dependencies)
+    if template_source is not None:
+        run(str(python), "scripts/render-pre-commit.py", "--check")
     run(str(python), "-m", "pre_commit", "validate-config")
     run(
         str(python), "-m", "pre_commit", "install",

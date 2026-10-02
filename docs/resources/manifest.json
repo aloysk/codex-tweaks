@@ -11,7 +11,8 @@
       "license": "MIT",
       "decision": "adopt-base",
       "purpose": "Shared Go/native host and package lifecycle",
-      "copiedProductFiles": []
+      "copiedProductFiles": [],
+      "access": "public"
     },
     {
       "id": "ke-spectrum-2",
@@ -20,7 +21,8 @@
       "license": null,
       "decision": "reference",
       "purpose": "Semantic design principles; no code or assets imported",
-      "copiedProductFiles": []
+      "copiedProductFiles": [],
+      "access": "restricted"
     },
     {
       "id": "zcode-monitor",
@@ -29,7 +31,8 @@
       "license": "MIT",
       "decision": "adapt-concept",
       "purpose": "Companion lifecycle, follow-window capsule and measurement labels",
-      "copiedProductFiles": []
+      "copiedProductFiles": [],
+      "access": "restricted"
     },
     {
       "id": "pre-commit-template",
@@ -38,7 +41,8 @@
       "license": "MIT",
       "decision": "adopt-tooling",
       "purpose": "Development hooks with project overlay",
-      "copiedProductFiles": []
+      "copiedProductFiles": [],
+      "access": "restricted"
     },
     {
       "id": "codex-token-overlay",
@@ -47,7 +51,8 @@
       "license": "MIT",
       "decision": "adapt-concept",
       "purpose": "Selected-thread binding and unobtrusive native capsule",
-      "copiedProductFiles": []
+      "copiedProductFiles": [],
+      "access": "public"
     },
     {
       "id": "usage-overview",
@@ -56,7 +61,8 @@
       "license": "MIT",
       "decision": "research",
       "purpose": "Existing host query-cache quota adapter",
-      "copiedProductFiles": []
+      "copiedProductFiles": [],
+      "access": "public"
     },
     {
       "id": "custom-background",
@@ -65,7 +71,8 @@
       "license": "MIT",
       "decision": "adapt-concept",
       "purpose": "Local wallpaper experience and cleanup",
-      "copiedProductFiles": []
+      "copiedProductFiles": [],
+      "access": "public"
     },
     {
       "id": "dream-skin",
@@ -74,7 +81,8 @@
       "license": "MIT",
       "decision": "adapt-concept",
       "purpose": "Wallpaper preview, apply and restore",
-      "copiedProductFiles": []
+      "copiedProductFiles": [],
+      "access": "public"
     },
     {
       "id": "codedrobe-desktop",
@@ -83,7 +91,8 @@
       "license": "MPL-2.0",
       "decision": "research",
       "purpose": "Theme-selection interaction",
-      "copiedProductFiles": []
+      "copiedProductFiles": [],
+      "access": "public"
     },
     {
       "id": "codedrobe-core",
@@ -92,7 +101,8 @@
       "license": "Apache-2.0",
       "decision": "research",
       "purpose": "Declarative theme preflight and restoration",
-      "copiedProductFiles": []
+      "copiedProductFiles": [],
+      "access": "public"
     },
     {
       "id": "token-monitor",
@@ -101,7 +111,8 @@
       "license": "MIT",
       "decision": "reference",
       "purpose": "Widget presentation; excludes authentication and account switching",
-      "copiedProductFiles": []
+      "copiedProductFiles": [],
+      "access": "public"
     }
   ]
 }

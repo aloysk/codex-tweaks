@@ -12,12 +12,11 @@ Python 3.12 or later and Git are needed for hook bootstrap:
 python scripts/bootstrap-dev.py
 ```
 
-This creates `.venv-dev` inside the checkout, installs pinned developer dependencies and installs the real `pre-commit` and `commit-msg` hooks. It does not modify global Python packages. First setup needs network access; the hook environments may download their pinned tools on first use. See [pre-commit infrastructure](docs/development/pre-commit.md) for provenance, local-template setup, overlay changes and refresh commands.
+This creates `.venv-dev` inside the checkout, installs pinned public developer tooling and installs the real `pre-commit` and `commit-msg` hooks using the committed configuration. It does not modify global Python packages or require access to the maintainer's private template repository. First setup needs network access; the hook environments may download their pinned tools on first use. See [pre-commit infrastructure](docs/development/pre-commit.md) for provenance, authorized local-template setup, overlay changes and refresh commands.
 
 Run checks from the repository root on Windows:
 
 ```powershell
-.venv-dev/Scripts/python.exe scripts/render-pre-commit.py --check
 .venv-dev/Scripts/python.exe -m pre_commit run --all-files
 python scripts/check-docs.py
 git diff --check
@@ -27,7 +26,7 @@ On macOS, use `.venv-dev/bin/python` instead of `.venv-dev/Scripts/python.exe`. 
 
 The Gitleaks hook scans staged changes. A clean CI checkout has no staged changes, so CI separately runs pinned Gitleaks against the PR/push commit range, including merge diffs. Manual workflow runs scan the selected HEAD commit; a new branch without a prior base scans its reachable history. Successful hook execution alone is not evidence that committed content was scanned.
 
-Project deviations belong in `.pre-commit-template-overlay.yaml`, not hand edits to the generated config. The repository preserves upstream generated-file line endings and does not add a Node frontend toolchain or require UTF-8 BOMs. Local agent indexes and virtual environments remain ignored.
+Project deviations belong in `.pre-commit-template-overlay.yaml`, not hand edits to the generated config. Refreshing or reproducing its generation is a maintainer operation: provide an authorized local checkout of the pinned template through `--template-source`, then run `scripts/render-pre-commit.py --write` or `--check` with `.venv-dev` Python. Ordinary clones and CI use the committed result. The repository preserves upstream generated-file line endings and does not add a Node frontend toolchain or require UTF-8 BOMs. Local agent indexes and virtual environments remain ignored.
 
 ## Product toolchain and checks
 
