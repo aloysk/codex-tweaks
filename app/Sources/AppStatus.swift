@@ -9,6 +9,7 @@ enum AppStatus: Equatable {
     case waitingForPage
     case connected(targetCount: Int)
     case disabled
+    case recoveryPending(String)
     case error(String)
 
     var symbol: String {
@@ -17,7 +18,7 @@ enum AppStatus: Equatable {
         case .disabled: return "pause.circle"
         case .codexNotRunning: return "circle"
         case .restartRequired: return "arrow.clockwise.circle"
-        case .error: return "exclamationmark.triangle.fill"
+        case .error, .recoveryPending: return "exclamationmark.triangle.fill"
         default: return "circle.dotted"
         }
     }
@@ -39,6 +40,8 @@ enum AppStatus: Equatable {
         case .waitingForPage: self = .waitingForPage
         case .connected: self = .connected(targetCount: status.targetCount ?? 0)
         case .disabled: self = .disabled
+        case .recoveryPending:
+            self = .recoveryPending(status.message ?? PresentationText.resolve(.statusRecoveryPendingDetail))
         case .error: self = .error(status.message ?? PresentationText.resolve(.statusErrorTitle))
         }
     }

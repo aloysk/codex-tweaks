@@ -41,7 +41,9 @@ The existing package API v3 supplies activation, cleanup, optional Node executio
 | `docs/development/` | Developer infrastructure reference |
 | `Skills/` | Existing package-authoring instructions; keep the case for compatibility |
 
-`GeneratedPresentationContract.swift`, `Generated/PresentationContract.g.cs`, `Generated/PresentationResources.xaml` and `contract/presentation-contract.json` are generated outputs. Windows can regenerate the shared contract with `go run ./cmd/contractgen -root ..` from `backend/`; the macOS `mise run generate` also generates the Xcode project.
+`GeneratedPresentationContract.swift`, `Generated/PresentationContract.g.cs`, `Generated/PresentationResources.xaml`, `contract/presentation-contract.json` and `contract/application-identity.json` are generated outputs. Go also supplies the native application identity, protocol version and shutdown grace constants through these generated sources. Windows can regenerate the shared contract with `go run ./cmd/contractgen -root ..` from `backend/`; the macOS `mise run generate` also generates the Xcode project.
+
+Runtime collaborators are narrow interfaces: `Platform` observes or explicitly opens the official app, and `CDPRuntime` binds a verified process identity before renderer effects. Ordinary Controller/RPC tests inject synthetic implementations. Cancellation, page cleanup and listener ownership are separate facts; [runtime foundation](docs/development/runtime-foundation.md) defines their diagnostics and lifecycle contract.
 
 ## Placement of new work
 

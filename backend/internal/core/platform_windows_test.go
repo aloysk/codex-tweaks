@@ -41,6 +41,9 @@ func TestWindowsPlatformLaunchIncludesEveryCDPArgument(t *testing.T) {
 		_ string,
 		_ []string,
 	) (CommandResult, error) {
+		if command == "powershell.exe" && containsString(arguments, codexProcessObservationPowerShell) {
+			return CommandResult{Output: `{"processes":[],"listeners":[]}`}, nil
+		}
 		invokedExecutable = command
 		invokedArguments = append([]string(nil), arguments...)
 		return CommandResult{}, nil
@@ -49,7 +52,7 @@ func TestWindowsPlatformLaunchIncludesEveryCDPArgument(t *testing.T) {
 		runner:            runner,
 		restoreNotifyIcon: func(context.Context, codexNotifyIconTarget) error { return nil },
 	}
-	if err := platform.LaunchCodex(context.Background(), CodexLaunchOptions{DisableGPUAcceleration: true}); err != nil {
+	if err := platform.LaunchCodex(context.Background(), CodexLaunchOptions{Mode: CodexLaunchEnhanced, DisableGPUAcceleration: true}); err != nil {
 		t.Fatal(err)
 	}
 	if invokedExecutable != "cmd.exe" || !containsString(invokedArguments, executable) {
@@ -81,6 +84,9 @@ func TestWindowsPlatformDiscoversAndActivatesPackagedCodex(t *testing.T) {
 		_ string,
 		_ []string,
 	) (CommandResult, error) {
+		if command == "powershell.exe" && containsString(arguments, codexProcessObservationPowerShell) {
+			return CommandResult{Output: `{"processes":[],"listeners":[]}`}, nil
+		}
 		invokedCommand = command
 		if command != "powershell.exe" || !containsString(arguments, packagedCodexPowerShell) {
 			t.Fatalf("unexpected discovery command: %q %#v", command, arguments)
@@ -100,7 +106,7 @@ func TestWindowsPlatformDiscoversAndActivatesPackagedCodex(t *testing.T) {
 			return nil
 		},
 	}
-	if err := platform.LaunchCodex(context.Background(), CodexLaunchOptions{}); err != nil {
+	if err := platform.LaunchCodex(context.Background(), CodexLaunchOptions{Mode: CodexLaunchEnhanced}); err != nil {
 		t.Fatal(err)
 	}
 	if invokedCommand != "powershell.exe" || activatedID != appUserModelID {
@@ -132,11 +138,14 @@ func TestWindowsPlatformSchedulesCodexNotifyIconRepairAfterRestart(t *testing.T)
 	t.Setenv("CODEX_APP_PATH", executable)
 	runner := windowsCommandRunnerFunc(func(
 		_ context.Context,
-		_ string,
-		_ []string,
+		command string,
+		arguments []string,
 		_ string,
 		_ []string,
 	) (CommandResult, error) {
+		if command == "powershell.exe" && containsString(arguments, codexProcessObservationPowerShell) {
+			return CommandResult{Output: `{"processes":[],"listeners":[]}`}, nil
+		}
 		return CommandResult{}, nil
 	})
 	repaired := make(chan codexNotifyIconTarget, 1)
@@ -213,7 +222,7 @@ func TestWindowsPackagedCodexActivationIntegration(t *testing.T) {
 	if appUserModelID := platform.locatePackagedCodex(ctx); appUserModelID == "" {
 		t.Fatal("Microsoft Store Codex package was not discovered")
 	}
-	if err := platform.RestartCodex(ctx, CodexLaunchOptions{}); err != nil {
+	if err := platform.RestartCodex(ctx, CodexLaunchOptions{Mode: CodexLaunchEnhanced}); err != nil {
 		t.Fatal(err)
 	}
 

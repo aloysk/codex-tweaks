@@ -6,7 +6,7 @@ final class BackendBundleTests: XCTestCase {
         let appBundle = try BuiltAppBundle.load(for: Self.self)
         let configuration = appBundle.bundleURL.deletingLastPathComponent().lastPathComponent
         try XCTSkipUnless(configuration == "Debug")
-        XCTAssertEqual(appBundle.bundleIdentifier, "com.zgccrui.CodexTweaks.Debug")
+        XCTAssertEqual(appBundle.bundleIdentifier, "io.github.aloysk.codexcompanion.debug")
     }
 
     func testBundledBackendVersionMatchesTheBuiltApp() throws {
@@ -17,6 +17,16 @@ final class BackendBundleTests: XCTestCase {
             forInfoDictionaryKey: "CodexTweaksReleaseVersion"
         ) as? String
         XCTAssertEqual(output.trimmingCharacters(in: .whitespacesAndNewlines), expected)
+    }
+
+    func testDevelopmentDistributionDoesNotConfigureAnUpdater() throws {
+        let appBundle = try BuiltAppBundle.load(for: Self.self)
+        XCTAssertEqual(appBundle.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String,
+                       "Codex Tweaks Companion")
+        XCTAssertNil(appBundle.object(forInfoDictionaryKey: "SUFeedURL"))
+        XCTAssertNil(appBundle.object(forInfoDictionaryKey: "SUPublicEDKey"))
+        XCTAssertEqual(appBundle.object(forInfoDictionaryKey: "SUEnableAutomaticChecks") as? Bool, false)
+        XCTAssertEqual(appBundle.object(forInfoDictionaryKey: "SUAutomaticallyUpdate") as? Bool, false)
     }
 
     func testBundledBackendIsExecutableAndAnswersPing() throws {
@@ -50,7 +60,7 @@ final class BackendBundleTests: XCTestCase {
         )
         let response = try JSONDecoder().decode(PingResponse.self, from: responseData)
         XCTAssertEqual(response.id, 1)
-        XCTAssertEqual(response.result.protocolVersion, 10)
+        XCTAssertEqual(response.result.protocolVersion, BackendProtocolContract.protocolVersion)
         XCTAssertEqual(response.result.backend, "go")
     }
 

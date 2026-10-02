@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "protocolVersion": 11,
+  "name": "Codex Tweaks Companion",
+  "bundleIdentifier": "io.github.aloysk.codexcompanion",
+  "publisher": "aloysk",
+  "artifactPrefix": "Codex-Tweaks-Companion",
+  "environmentPrefix": "CODEX_COMPANION_",
+  "repository": "aloysk/codex-tweaks",
+  "repositoryURL": "https://github.com/aloysk/codex-tweaks",
+  "updatesEnabled": false
+}

@@ -18,9 +18,15 @@ internal sealed class VelopackUpdateService
         string architecture,
         string repositoryUrl)
     {
+        if (!ApplicationIdentity.UpdatesEnabled)
+        {
+            _pending = null;
+            return new VelopackUpdateResult(
+                true, null, PresentationFallback.Text(PresentationTextKey.UpdateNotConfigured));
+        }
         try
         {
-            var localSource = Environment.GetEnvironmentVariable("CODEX_TWEAKS_UPDATE_SOURCE");
+            var localSource = Environment.GetEnvironmentVariable(ApplicationIdentity.EnvironmentPrefix + "UPDATE_SOURCE");
             var ridArchitecture = architecture == "arm64" ? "arm64" : "x64";
             var options = new UpdateOptions
             {

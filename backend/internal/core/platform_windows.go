@@ -55,11 +55,8 @@ func NewPlatform(runner CommandRunner) Platform {
 }
 
 func (p *windowsPlatform) IsCodexRunning(ctx context.Context) (bool, error) {
-	result, err := p.runner.Run(ctx, "tasklist.exe", []string{"/FI", "IMAGENAME eq ChatGPT.exe", "/FO", "CSV", "/NH"}, "", environmentSlice(environmentMap()))
-	if err != nil {
-		return false, err
-	}
-	return result.Status == 0 && strings.Contains(strings.ToLower(result.Output), "chatgpt.exe"), nil
+	observation, err := p.ObserveCodex(ctx)
+	return observation.Running, err
 }
 
 func (p *windowsPlatform) ActivateCodex(ctx context.Context) error {
@@ -69,6 +66,15 @@ func (p *windowsPlatform) ActivateCodex(ctx context.Context) error {
 }
 
 func (p *windowsPlatform) LaunchCodex(ctx context.Context, options CodexLaunchOptions) error {
+	if options.Mode == CodexLaunchEnhanced {
+		running, err := p.IsCodexRunning(ctx)
+		if err != nil {
+			return err
+		}
+		if running {
+			return ErrManualCodexExitRequired
+		}
+	}
 	launchArguments := codexLaunchArguments(options, runtime.GOOS)
 	if executable := p.locateUnpackagedCodex(); executable != "" {
 		if err := p.launchUnpackagedCodex(ctx, executable, launchArguments); err != nil {
@@ -147,17 +153,13 @@ func (p *windowsPlatform) launchUnpackagedCodex(ctx context.Context, executable 
 }
 
 func (p *windowsPlatform) RestartCodex(ctx context.Context, options CodexLaunchOptions) error {
-	_, _ = p.runner.Run(ctx, "taskkill.exe", []string{"/IM", "ChatGPT.exe", "/T"}, "", environmentSlice(environmentMap()))
-	for range 25 {
-		running, _ := p.IsCodexRunning(ctx)
-		if !running {
-			return p.LaunchCodex(ctx, options)
-		}
-		if err := waitContext(ctx, 200*time.Millisecond); err != nil {
-			return err
-		}
+	running, err := p.IsCodexRunning(ctx)
+	if err != nil {
+		return err
 	}
-	_, _ = p.runner.Run(ctx, "taskkill.exe", []string{"/F", "/IM", "ChatGPT.exe", "/T"}, "", environmentSlice(environmentMap()))
+	if running {
+		return ErrManualCodexExitRequired
+	}
 	return p.LaunchCodex(ctx, options)
 }
 

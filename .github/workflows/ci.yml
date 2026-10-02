@@ -76,8 +76,29 @@ jobs:
       - name: Setup mise
         uses: jdx/mise-action@v4
 
+      - name: Setup Node for synthetic renderer tests
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24.11.1'
+
+      - name: Setup Python for developer preflight
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Verify macOS developer prerequisites
+        run: python scripts/check-dev.py --profile macos
+
       - name: Verify macOS
         run: mise run verify
+
+      - name: Preserve generated Xcode project for review
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: generated-macos-project
+          path: CodexTweaks.xcodeproj
+          retention-days: 7
 
   windows:
     name: Windows / WinUI 3 + Go + Velopack
@@ -94,13 +115,30 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v7
         with:
-          go-version-file: backend/go.mod
+          go-version: '1.26.4'
           cache-dependency-path: backend/go.sum
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
+
+      - name: Setup Node for synthetic renderer tests
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24.11.1'
+
+      - name: Test native diagnostics
+        shell: pwsh
+        run: dotnet test windows/CodexTweaks.Windows.Tests/CodexTweaks.Windows.Tests.csproj --configuration Release --nologo
+
+      - name: Setup Python for developer preflight
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Verify Windows developer prerequisites
+        run: python scripts/check-dev.py --profile windows
 
       - name: Verify Go backend on Windows
         shell: pwsh

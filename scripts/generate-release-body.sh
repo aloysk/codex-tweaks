@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=scripts/application-identity.sh
+source "$ROOT_DIR/scripts/application-identity.sh"
+PRODUCT_NAME="$(application_identity name)"
+ARTIFACT_PREFIX="$(application_identity artifactPrefix)"
+
 RELEASE_TAG="${RELEASE_TAG:-${1:-}}"
 RELEASE_BODY_PATH="${RELEASE_BODY_PATH:-${2:-release-body.md}}"
 GITHUB_SERVER_URL="${GITHUB_SERVER_URL:-https://github.com}"
-GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-codex-tweaks/codex-tweaks}"
+GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-$(application_identity repository)}"
 RELEASE_ASSET_ROOT="${RELEASE_ASSET_ROOT:-}"
 
 if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$ ]]; then
@@ -14,12 +20,12 @@ fi
 
 release_version="${RELEASE_TAG#v}"
 download_base="${GITHUB_SERVER_URL%/}/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}"
-macos_universal_asset="Codex-Tweaks-${RELEASE_TAG}.dmg"
-macos_arm64_asset="Codex-Tweaks-${RELEASE_TAG}-arm64.dmg"
-macos_x86_64_asset="Codex-Tweaks-${RELEASE_TAG}-x86_64.dmg"
-macos_sparkle_asset="Codex-Tweaks-${RELEASE_TAG}-sparkle.zip"
-windows_x64_asset="Codex-Tweaks-v${release_version}-windows-Setup-x86_64.exe"
-windows_arm64_asset="Codex-Tweaks-v${release_version}-windows-Setup-arm64.exe"
+macos_universal_asset="${ARTIFACT_PREFIX}-${RELEASE_TAG}.dmg"
+macos_arm64_asset="${ARTIFACT_PREFIX}-${RELEASE_TAG}-arm64.dmg"
+macos_x86_64_asset="${ARTIFACT_PREFIX}-${RELEASE_TAG}-x86_64.dmg"
+macos_sparkle_asset="${ARTIFACT_PREFIX}-${RELEASE_TAG}-sparkle.zip"
+windows_x64_asset="${ARTIFACT_PREFIX}-v${release_version}-windows-Setup-x86_64.exe"
+windows_arm64_asset="${ARTIFACT_PREFIX}-v${release_version}-windows-Setup-arm64.exe"
 
 if [[ -n "$RELEASE_ASSET_ROOT" ]]; then
   required_assets=(
@@ -54,7 +60,7 @@ cat > "$RELEASE_BODY_PATH" <<EOF
 ### 安装说明
 
 - 普通用户只需下载上表中与自己系统对应的文件。
-- macOS：打开 DMG 后，将 Codex Tweaks 拖入 Applications（应用程序）文件夹。
+- macOS：打开 DMG 后，将 ${PRODUCT_NAME} 拖入 Applications（应用程序）文件夹。
 - Windows：运行对应架构的 EXE 安装程序。
 - Release 中的 Sparkle ZIP、<code>appcast.xml</code>、<code>.nupkg</code> 和 <code>releases.*.json</code> 文件供应用内自动更新使用，请勿手动下载。
 
@@ -73,7 +79,7 @@ cat > "$RELEASE_BODY_PATH" <<EOF
 ### Installation notes
 
 - Most users only need the file matching their system in the table above.
-- macOS: Open the DMG, then drag Codex Tweaks to the Applications folder.
+- macOS: Open the DMG, then drag ${PRODUCT_NAME} to the Applications folder.
 - Windows: Run the EXE installer matching your system architecture.
 - The Sparkle ZIP, <code>appcast.xml</code>, <code>.nupkg</code>, and <code>releases.*.json</code> files are used by the in-app updaters and should not be downloaded manually.
 

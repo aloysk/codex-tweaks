@@ -5,13 +5,62 @@ import (
 	"strings"
 )
 
-const CleanupScript = `(() => {
+const rendererFixtureOwner = "synthetic-fixture"
+
+var CleanupScript = cleanupScriptOwned(rendererFixtureOwner)
+
+// A bounded page lease rejects late CDP evaluations after stop. It intentionally
+// remains inactive until page exit; removing it would let a queued old script run.
+func runtimeLeaseClaimScript(owner string, epoch uint64) string {
+	return fmt.Sprintf(`(() => {
+  const owner = %s;
+  const epoch = %d;
+  const key = "__CODEX_COMPANION_RUNTIME_LEASE__";
+  const runtime = globalThis["__CODEX_TWEAKS__"];
+  const binding = globalThis["__codexTweaksHostBridge"];
+  const lease = globalThis[key];
+  if ((lease && lease.instance !== owner) || (runtime && runtime.owner !== owner)
+      || (!runtime && document.getElementById("codex-tweaks-root"))
+      || (binding && binding.__codexTweaksOwner !== owner)) return { status: "foreign" };
+  if (lease && (lease.epoch > epoch || (lease.epoch === epoch && !lease.active))) return { status: "stopped" };
+  globalThis[key] = { instance: owner, epoch, active: true };
+  return { status: "claimed" };
+})()`, JSONLiteral(owner), epoch)
+}
+
+func runtimeScriptEpoch(epochs []uint64) uint64 {
+	if len(epochs) > 0 {
+		return epochs[0]
+	}
+	return 1
+}
+
+func cleanupScriptOwned(owner string, epochs ...uint64) string {
+	return fmt.Sprintf(`(async () => {
   const key = "__CODEX_TWEAKS__";
-  try { globalThis[key]?.cleanup?.(); } catch (_) {}
-  document.getElementById("codex-tweaks-root")?.remove();
-  delete globalThis[key];
+  const owner = %s;
+  const epoch = %d;
+  const leaseKey = "__CODEX_COMPANION_RUNTIME_LEASE__";
+  const lease = globalThis[leaseKey];
+  if (lease && (lease.instance !== owner || lease.epoch > epoch)) return { status: "foreign" };
+  const runtime = globalThis[key];
+  const binding = globalThis["__codexTweaksHostBridge"];
+  const root = document.getElementById("codex-tweaks-root");
+  if ((runtime && runtime.owner !== owner) || (binding && binding.__codexTweaksOwner !== owner)
+      || (!runtime && root && !lease)) return { status: "foreign" };
+  // Invalidate before awaiting callbacks, including when injection never returned.
+  globalThis[leaseKey] = { instance: owner, epoch, active: false };
+  if (!runtime) {
+    if (root) return { status: "cleanupPending" };
+    if (binding?.__codexTweaksOwner === owner) delete globalThis["__codexTweaksHostBridge"];
+    return { status: "cleaned" };
+  }
+  const result = await runtime.cleanup();
+  if (result?.status !== "cleaned") return result ?? { status: "cleanupFailed" };
+  if (globalThis[key] || document.getElementById("codex-tweaks-root")) return { status: "cleanupFailed" };
   return { status: "cleaned" };
-})()`
+})()`, JSONLiteral(owner), runtimeScriptEpoch(epochs))
+}
 
 func InjectionScript(payload Payload, forceGeneration int) string {
 	return injectionScriptWithRendererBridge(payload, forceGeneration, "", map[string]string{}, nil)
@@ -34,14 +83,27 @@ func injectionRuntimeProbeScript(
 	bridgeSessionID string,
 	settingsAdapterConfiguration *SettingsAdapterConfiguration,
 ) string {
+	return injectionRuntimeProbeScriptOwned(payload, forceGeneration, bridgeSessionID, settingsAdapterConfiguration, rendererFixtureOwner)
+}
+
+func injectionRuntimeProbeScriptOwned(payload Payload, forceGeneration int, bridgeSessionID string, settingsAdapterConfiguration *SettingsAdapterConfiguration, owner string, epochs ...uint64) string {
 	return fmt.Sprintf(`(() => {
   const runtime = globalThis["__CODEX_TWEAKS__"];
+  const owner = %s;
+  const epoch = %d;
+  const lease = globalThis["__CODEX_COMPANION_RUNTIME_LEASE__"];
+  if (!lease || lease.instance !== owner || lease.epoch !== epoch || !lease.active) return { status: "stopped" };
+  const binding = globalThis["__codexTweaksHostBridge"];
+  if ((runtime && runtime.owner !== owner) || (!runtime && document.getElementById("codex-tweaks-root")) || (binding && binding.__codexTweaksOwner !== owner)) return { status: "foreign" };
   const version = %s;
   const bridgeSessionID = %s;
   const settingsAdapterConfiguration = %s;
   const settingsAdapterKey = JSON.stringify(settingsAdapterConfiguration ?? null);
   const unchanged = Boolean(
     runtime?.version === version
+    && runtime?.epoch === epoch
+    && !runtime?.stopping
+    && !runtime?.activationPending
     && runtime?.bridgeSessionID === bridgeSessionID
     && runtime?.settingsAdapterKey === settingsAdapterKey
     && document.getElementById("codex-tweaks-root")
@@ -52,7 +114,7 @@ func injectionRuntimeProbeScript(
     packageErrors: unchanged ? (runtime?.packageErrors ?? []) : [],
     settingsAdapterError: runtime?.settingsAdapterError ?? null
   };
-})()`, JSONLiteral(effectiveInjectionVersion(payload, forceGeneration)), JSONLiteral(bridgeSessionID), JSONLiteral(settingsAdapterConfiguration))
+})()`, JSONLiteral(owner), runtimeScriptEpoch(epochs), JSONLiteral(effectiveInjectionVersion(payload, forceGeneration)), JSONLiteral(bridgeSessionID), JSONLiteral(settingsAdapterConfiguration))
 }
 
 func injectionScriptWithRendererBridge(
@@ -62,6 +124,10 @@ func injectionScriptWithRendererBridge(
 	nodeTokens map[string]string,
 	settingsAdapterConfiguration *SettingsAdapterConfiguration,
 ) string {
+	return injectionScriptOwned(payload, forceGeneration, bridgeSessionID, nodeTokens, settingsAdapterConfiguration, rendererFixtureOwner)
+}
+
+func injectionScriptOwned(payload Payload, forceGeneration int, bridgeSessionID string, nodeTokens map[string]string, settingsAdapterConfiguration *SettingsAdapterConfiguration, owner string, epochs ...uint64) string {
 	effectiveVersion := effectiveInjectionVersion(payload, forceGeneration)
 	setups := make([]string, 0, len(payload.Packages))
 	executions := make([]string, 0, len(payload.Packages))
@@ -71,14 +137,26 @@ func injectionScriptWithRendererBridge(
 	}
 	return fmt.Sprintf(`(async () => {
   const key = "__CODEX_TWEAKS__";
+  const owner = %s;
+  const epoch = %d;
+  const assertActiveLease = () => {
+    const lease = globalThis["__CODEX_COMPANION_RUNTIME_LEASE__"];
+    if (!lease || lease.instance !== owner || lease.epoch !== epoch || !lease.active) throw new Error("Renderer injection lease has stopped");
+  };
+  assertActiveLease();
   const version = %s;
   const bridgeSessionID = %s;
   const settingsAdapterConfiguration = %s;
   const settingsAdapterKey = JSON.stringify(settingsAdapterConfiguration ?? null);
   const settingsAdapterExpected = Boolean(settingsAdapterConfiguration?.sections?.length);
   const existing = globalThis[key];
+  const existingBinding = globalThis["__codexTweaksHostBridge"];
+  if ((existing && existing.owner !== owner) || (!existing && document.getElementById("codex-tweaks-root")) || (existingBinding && existingBinding.__codexTweaksOwner !== owner)) {
+    throw new Error("Renderer is owned by another enhancement runtime");
+  }
   if (
-    existing?.version === version &&
+    existing?.version === version && existing?.epoch === epoch &&
+    !existing?.stopping && !existing?.activationPending &&
     existing?.bridgeSessionID === bridgeSessionID &&
     existing?.settingsAdapterKey === settingsAdapterKey &&
     document.getElementById("codex-tweaks-root")
@@ -91,14 +169,18 @@ func injectionScriptWithRendererBridge(
     };
   }
 
-  try { existing?.cleanup?.(); } catch (_) {}
-  document.getElementById("codex-tweaks-root")?.remove();
+  if (existing) {
+    const cleanupResult = await existing.cleanup({ replacing: true, preserveBinding: Boolean(bridgeSessionID) });
+    if (cleanupResult?.status !== "cleaned") throw new Error("Previous renderer cleanup failed: " + JSON.stringify(cleanupResult));
+  }
+  assertActiveLease();
 
   const host = document.createElement("div");
   host.id = "codex-tweaks-root";
   host.style.display = "contents";
   (document.body || document.documentElement).appendChild(host);
   const packageStates = new Map();
+  let activatingPackages = 0;
   const packageErrors = [];
   const nodePending = new Map();
   const nodePendingLimit = 64;
@@ -366,15 +448,15 @@ func injectionScriptWithRendererBridge(
       previousLabels.delete(slug);
     };
 
-    const cleanupMount = (element, record) => {
-      try { record?.cleanup?.(); } catch (_) {}
+    const cleanupMount = async (element, record) => {
+      await record?.cleanup?.();
       mounted.delete(element);
     };
-    const scanMounts = () => {
+    const scanMounts = async () => {
       if (adapterDisposed || !settingsRouteChildren || !renderers.size) return;
       for (const [element, record] of mounted) {
         if (!element.isConnected || renderers.get(record.slug) !== record.renderer) {
-          cleanupMount(element, record);
+          await cleanupMount(element, record);
         }
       }
       for (const element of document.querySelectorAll("[data-codex-tweaks-settings-section-host]")) {
@@ -395,7 +477,9 @@ func injectionScriptWithRendererBridge(
         }
       }
     };
-    const observer = new MutationObserver(scanMounts);
+    const observer = new MutationObserver(() => {
+      scanMounts().catch((error) => { settingsAdapterError = error instanceof Error ? error.message : String(error); });
+    });
     const navigateToSettings = (path, replace = false) => {
       if (!navigationBus) return;
       navigationBus.dispatchHostMessage({ type: "navigate-to-route", path, replace });
@@ -468,17 +552,16 @@ func injectionScriptWithRendererBridge(
         const renderer = { mount };
         renderers.set(descriptor.slug, renderer);
         syncRoutes();
-        scanMounts();
+        scanMounts().catch((error) => { settingsAdapterError = error instanceof Error ? error.message : String(error); });
         let registered = true;
-        const unregister = () => {
+        const unregister = async () => {
           if (!registered) return;
-          registered = false;
           if (renderers.get(descriptor.slug) === renderer) {
             const activeSlug = activeSettingsSlug();
-            renderers.delete(descriptor.slug);
             for (const [element, record] of mounted) {
-              if (record.slug === descriptor.slug) cleanupMount(element, record);
+              if (record.slug === descriptor.slug) await cleanupMount(element, record);
             }
+            renderers.delete(descriptor.slug);
             for (let index = registry.length - 1; index >= 0; index -= 1) {
               if (registry[index]?.slug === descriptor.slug) registry.splice(index, 1);
             }
@@ -497,6 +580,7 @@ func injectionScriptWithRendererBridge(
               refreshSettingsRoute();
             }
           }
+          registered = false;
         };
         return Object.freeze({
           id: descriptor.id,
@@ -508,7 +592,7 @@ func injectionScriptWithRendererBridge(
           unregister
         });
       },
-      cleanup() {
+      async cleanup() {
         adapterDisposed = true;
         const activeSlug = activeSettingsSlug();
         const wasCustomRoute = Boolean(activeSlug && descriptors.has(activeSlug));
@@ -517,7 +601,7 @@ func injectionScriptWithRendererBridge(
         }
         observer.disconnect();
         restoreGroupMapInterceptor();
-        for (const [element, record] of mounted) cleanupMount(element, record);
+        for (const [element, record] of mounted) await cleanupMount(element, record);
         renderers.clear();
         for (const descriptor of descriptors.values()) {
           removeRoute(descriptor.slug);
@@ -621,10 +705,10 @@ func injectionScriptWithRendererBridge(
       );
       if (!iconMap) throw new Error("Codex settings icon registry unavailable");
       observer.observe(document.documentElement, { childList: true, subtree: true });
-      scanMounts();
+      await scanMounts();
       return adapter;
     } catch (error) {
-      adapter.cleanup();
+      await adapter.cleanup();
       throw error;
     }
   };
@@ -634,6 +718,12 @@ func injectionScriptWithRendererBridge(
   } catch (error) {
     settingsAdapterError = error instanceof Error ? error.message : String(error);
     console.error("Codex Tweaks settings adapter unavailable", error);
+  }
+
+  try { assertActiveLease(); } catch (error) {
+    await settingsAdapter?.cleanup?.();
+    host.remove();
+    throw error;
   }
 
   const createSettingsSectionsExtension = (packageID, declaration, registerCleanup) => {
@@ -711,19 +801,32 @@ func injectionScriptWithRendererBridge(
     });
   };
 
-  const cleanupPackageState = (state) => {
-    if (!state || state.cleaned) return;
-    state.cleaned = true;
+  const cleanupPackageState = async (state) => {
+    if (!state || state.cleaned) return [];
     state.activated = false;
-    for (const callback of state.cleanupCallbacks.reverse()) {
-      try { callback(); } catch (_) {}
+    const failedCallbacks = new Set();
+    const failures = [];
+    for (const callback of [...state.cleanupCallbacks].reverse()) {
+      try { await callback(); } catch (error) {
+        failedCallbacks.add(callback);
+        failures.push({ id: state.id, message: error instanceof Error ? error.message : String(error) });
+      }
     }
+    state.cleanupCallbacks = state.cleanupCallbacks.filter((callback) => failedCallbacks.has(callback));
+    if (failures.length) return failures;
+    state.cleaned = true;
     state.libraries.clear();
     state.style.remove();
     state.root.remove();
+    return [];
   };
 
   const runtime = {
+    owner,
+    epoch,
+    get activationPending() { return activatingPackages > 0; },
+    stopping: false,
+    cleaning: null,
     version,
     bridgeSessionID,
     settingsAdapterKey,
@@ -758,21 +861,34 @@ func injectionScriptWithRendererBridge(
       }
       return true;
     },
-    cleanup() {
+    async cleanup({ replacing = false, preserveBinding = false } = {}) {
+      runtime.stopping = true;
+      const lease = globalThis["__CODEX_COMPANION_RUNTIME_LEASE__"];
+      if (!replacing && lease?.instance === owner && lease.epoch === epoch) lease.active = false;
+      if (activatingPackages > 0) return { status: "cleanupPending", errors: [{ id: "runtime", message: "Package activation is still running" }] };
+      if (runtime.cleaning) return runtime.cleaning;
+      runtime.cleaning = (async () => {
+      const failures = [];
       for (const state of [...packageStates.values()].reverse()) {
-        cleanupPackageState(state);
+        failures.push(...await cleanupPackageState(state));
+        if (state.cleaned) packageStates.delete(state.id);
       }
-      packageStates.clear();
       for (const pending of nodePending.values()) {
         bridgeClearTimeout(pending.timeout);
         pending.reject(nodeError("Codex Tweaks runtime was cleaned up", "runtime_cleanup"));
       }
       nodePending.clear();
       nodeEventListeners.clear();
-      try { settingsAdapter?.cleanup?.(); } catch (_) {}
-      settingsAdapter = null;
+      try { await settingsAdapter?.cleanup?.(); settingsAdapter = null; } catch (error) {
+        failures.push({ id: "ui.settingsSections", message: error instanceof Error ? error.message : String(error) });
+      }
+      if (failures.length) return { status: "cleanupFailed", errors: failures };
+      if (!preserveBinding && globalThis["__codexTweaksHostBridge"]?.__codexTweaksOwner === owner) delete globalThis["__codexTweaksHostBridge"];
       host.remove();
       if (globalThis[key] === runtime) delete globalThis[key];
+      return { status: "cleaned" };
+      })();
+      try { return await runtime.cleaning; } finally { runtime.cleaning = null; }
     }
   };
   globalThis[key] = runtime;
@@ -782,7 +898,7 @@ func injectionScriptWithRendererBridge(
 %s
 
   return { status: "injected", version, packageErrors, settingsAdapterError };
-})()`, JSONLiteral(effectiveVersion), JSONLiteral(bridgeSessionID), JSONLiteral(settingsAdapterConfiguration), JSONLiteral(rendererBridgeBindingName), strings.Join(setups, "\n"), strings.Join(executions, "\n"))
+})()`, JSONLiteral(owner), runtimeScriptEpoch(epochs), JSONLiteral(effectiveVersion), JSONLiteral(bridgeSessionID), JSONLiteral(settingsAdapterConfiguration), JSONLiteral(rendererBridgeBindingName), strings.Join(setups, "\n"), strings.Join(executions, "\n"))
 }
 
 func packageSetupScript(pkg CompiledPackage) string {
@@ -897,7 +1013,12 @@ func packageExecutionScript(pkg CompiledPackage, nodeToken string) string {
         return [...dependencyIDs];
       }
     };
+    let activationStarted = false;
     try {
+      assertActiveLease();
+      if (runtime.stopping) throw new Error("Runtime is stopping");
+      activatingPackages++;
+      activationStarted = true;
       const context = {
         id: packageID,
         name: packageName,
@@ -932,14 +1053,18 @@ func packageExecutionScript(pkg CompiledPackage, nodeToken string) string {
       }
       const cleanup = await activate(context);
       if (typeof cleanup === "function") api.registerCleanup(cleanup);
+      assertActiveLease();
+      if (runtime.stopping) throw new Error("Runtime stopped during package activation");
       state.activated = true;
     } catch (error) {
-      cleanupPackageState(state);
-      packageStates.delete(packageID);
+      const cleanupFailures = await cleanupPackageState(state);
+      if (state.cleaned) packageStates.delete(packageID);
       const message = error instanceof Error
         ? (error.stack || error.message)
         : String(error);
-      packageErrors.push({ id: packageID, name: packageName, message });
+      packageErrors.push({ id: packageID, name: packageName, message: message + (cleanupFailures.length ? "\nCleanup failed: " + JSON.stringify(cleanupFailures) : "") });
+    } finally {
+      if (activationStarted) activatingPackages--;
     }
   }`, JSONLiteral(pkg.ID), JSONLiteral(pkg.Name), JSONLiteral(pkg.Version), JSONLiteral(pkg.DependencyIDs), JSONLiteral(pkg.UI), JSONLiteral(pkg.Node), JSONLiteral(nodeToken), pkg.JavaScript)
 }

@@ -32,6 +32,16 @@ Project deviations belong in `.pre-commit-template-overlay.yaml`, not hand edits
 
 The source of exact versions is `mise.toml`, `backend/go.mod`, the Windows project and `.config/dotnet-tools.json`; CI shows the tested setup. Windows requires .NET 10, the appropriate Windows SDK and Go; package building also uses Node/npm/npx. macOS additionally requires Xcode and the tools selected by mise. Bootstrap above installs development hooks, not these native product toolchains.
 
+Run the read-only preflight before development; choose the profile for the work you will verify:
+
+```text
+python scripts/check-dev.py --profile core
+python scripts/check-dev.py --profile windows
+python scripts/check-dev.py --profile macos
+```
+
+Each profile checks Python, Git, Go against `backend/go.mod`, and Node/npm/npx. Node is required by offline DOM fixtures; npm/npx support optional package builds. `windows` additionally checks .NET and Windows SDK requirements from the project; `macos` checks Xcode and xcodegen. Use native profiles on their matching host. Missing optional CodeGraph/Serena CLIs are informational; MCP availability is not inferred from PATH. Preflight fails if a `CODEX_*LIVE*` or `CODEX_*INTEGRATION*` environment flag equals `1`. It does not install software, change settings or run tests, and a pass establishes tool readiness only.
+
 For shared Go or contract work, from `backend/`:
 
 ```text

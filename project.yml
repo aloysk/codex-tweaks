@@ -1,6 +1,6 @@
 name: CodexTweaks
 options:
-  bundleIdPrefix: com.zgccrui
+  bundleIdPrefix: io.github.aloysk
   createIntermediateGroups: true
   developmentLanguage: en
   deploymentTarget:
@@ -17,7 +17,6 @@ settings:
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
     CODEX_TWEAKS_RELEASE_VERSION: "$(MARKETING_VERSION)"
-    SPARKLE_PUBLIC_ED_KEY: "DwmQV4Y5oLUhQg3qPRw3RCd3cYTjYhAm31smb5mA0T4="
 
 packages:
   Sparkle:
@@ -28,7 +27,7 @@ targets:
   CodexTweaks:
     type: application
     platform: macOS
-    productName: Codex Tweaks
+    productName: Codex Tweaks Companion
     sources:
       - path: app/Sources
       - path: app/Resources/Icons
@@ -41,8 +40,8 @@ targets:
       - package: Sparkle
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.zgccrui.CodexTweaks
-        PRODUCT_NAME: Codex Tweaks
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.aloysk.codexcompanion
+        PRODUCT_NAME: Codex Tweaks Companion
         PRODUCT_MODULE_NAME: CodexTweaks
         INFOPLIST_FILE: app/Resources/Info.plist
         GENERATE_INFOPLIST_FILE: NO
@@ -51,7 +50,7 @@ targets:
         ENABLE_USER_SCRIPT_SANDBOXING: NO
       configs:
         Debug:
-          PRODUCT_BUNDLE_IDENTIFIER: com.zgccrui.CodexTweaks.Debug
+          PRODUCT_BUNDLE_IDENTIFIER: io.github.aloysk.codexcompanion.debug
     preBuildScripts:
       - name: Build Go Backend
         script: |
@@ -63,9 +62,11 @@ targets:
     # Compile the pure Swift sources directly so XCTest never launches the app.
     sources:
       - path: app/Tests/BackendProtocolTests.swift
+      - path: app/Tests/BackendClientLifecycleTests.swift
       - path: app/Tests/TestIsolationTests.swift
       - path: app/Sources/AppStatus.swift
       - path: app/Sources/BackendJSON.swift
+      - path: app/Sources/BackendClient.swift
       - path: app/Sources/BackendProtocol.swift
       - path: app/Sources/GeneratedPresentationContract.swift
       - path: app/Sources/PresentationText.swift
@@ -75,7 +76,7 @@ targets:
       - path: app/Sources/TweakPackageRemoteManager.swift
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.zgccrui.CodexTweaksTests
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.aloysk.codexcompanion.tests
         GENERATE_INFOPLIST_FILE: YES
         MACOSX_DEPLOYMENT_TARGET: "14.0"
   CodexTweaksBundleTests:
@@ -84,12 +85,13 @@ targets:
     # The scheme builds the app artifact; this target inspects it without hosting in it.
     sources:
       - path: app/Tests/BackendBundleTests.swift
+      - path: app/Sources/GeneratedPresentationContract.swift
       - path: app/Tests/BuiltAppBundle.swift
       - path: app/Tests/SparkleLocalizationTests.swift
       - path: app/Tests/TestIsolationTests.swift
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.zgccrui.CodexTweaksBundleTests
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.aloysk.codexcompanion.bundle-tests
         GENERATE_INFOPLIST_FILE: YES
         MACOSX_DEPLOYMENT_TARGET: "14.0"
 schemes:

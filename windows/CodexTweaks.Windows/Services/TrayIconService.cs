@@ -291,7 +291,7 @@ internal sealed class TrayIconService : IDisposable
         }
         catch (Exception exception)
         {
-            App.Log($"Tray command failed: {exception}");
+            App.LogException("Tray command failed", exception);
             ShowError(exception.Message);
         }
         finally

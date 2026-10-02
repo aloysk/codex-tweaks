@@ -12,11 +12,6 @@ import (
 	"time"
 )
 
-const (
-	UpdateRepository    = "codex-tweaks/codex-tweaks"
-	UpdateRepositoryURL = "https://github.com/" + UpdateRepository
-)
-
 type UpdateChannel string
 
 const (
@@ -56,7 +51,7 @@ func (s *UpdateService) Check(ctx context.Context, channel UpdateChannel, curren
 	}
 	request.Header.Set("Accept", "application/vnd.github+json")
 	request.Header.Set("X-GitHub-Api-Version", "2026-03-10")
-	request.Header.Set("User-Agent", "Codex-Tweaks/"+currentVersion)
+	request.Header.Set("User-Agent", ApplicationArtifactPrefix+"/"+currentVersion)
 	response, err := s.httpClient.Do(request)
 	if err != nil {
 		return nil, err
@@ -67,7 +62,7 @@ func (s *UpdateService) Check(ctx context.Context, channel UpdateChannel, curren
 		case http.StatusForbidden:
 			return nil, errors.New("GitHub 暂时限制了更新请求，请稍后再试。")
 		case http.StatusNotFound:
-			return nil, errors.New("没有找到 Codex Tweaks 的 Release 仓库。")
+			return nil, fmt.Errorf("没有找到 %s 的 Release 仓库。", ApplicationName)
 		default:
 			return nil, fmt.Errorf("检查更新失败（HTTP %d）。", response.StatusCode)
 		}

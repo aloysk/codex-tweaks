@@ -7,7 +7,8 @@ import (
 	"time"
 )
 
-func intString(value int) string { return strconv.Itoa(value) }
+func intString(value int) string         { return strconv.Itoa(value) }
+func stringPointer(value string) *string { return &value }
 
 func (c *Controller) CheckNodeEnvironment() {
 	c.mu.Lock()
@@ -60,143 +61,277 @@ func (c *Controller) CheckGitEnvironment() {
 }
 
 func (c *Controller) Refresh() {
+	if c.ctx.Err() != nil {
+		return
+	}
 	if !c.refreshMu.TryLock() {
 		return
 	}
 	defer c.refreshMu.Unlock()
+	if c.ctx.Err() != nil {
+		return
+	}
 	if err := c.updatePackages(); err != nil {
+		if c.ctx.Err() != nil {
+			return
+		}
 		message := "无法读取功能包：" + err.Error()
-		c.mu.Lock()
-		c.status = AppStatus{Kind: StatusError, Message: &message}
-		c.mu.Unlock()
-		c.emit()
+		c.setStatus(AppStatus{Kind: StatusError, Message: &message})
+		return
+	}
+	if c.ctx.Err() != nil {
 		return
 	}
 	c.scheduleDeveloperBuilds()
 	c.CheckManagedPackageUpdates(true)
-
+	ctx, cancel := context.WithTimeout(c.ctx, 5*time.Second)
+	defer cancel()
+	if lockWithContext(ctx, &c.runtimeMu) != nil {
+		return
+	}
+	defer c.runtimeMu.Unlock()
 	c.mu.Lock()
+	if c.shuttingDown {
+		c.mu.Unlock()
+		return
+	}
 	enabled := c.config.Enabled
 	cleanupCompleted := c.disabledCleanupCompleted
+	epoch := c.runtimeEpoch
+	c.injectCancel = cancel
 	c.mu.Unlock()
-	if !enabled {
-		if c.nodeRuntime != nil {
-			c.nodeRuntime.StopAll()
-		}
-		if !cleanupCompleted {
-			ctx, cancel := context.WithTimeout(c.ctx, 6*time.Second)
-			_ = c.cdp.CleanupAllTargets(ctx)
-			cancel()
-		}
+	defer func() {
 		c.mu.Lock()
-		c.disabledCleanupCompleted = true
-		c.packageRuntimeErrors = map[string]string{}
-		c.status = AppStatus{Kind: StatusDisabled}
+		if c.runtimeEpoch == epoch {
+			c.injectCancel = nil
+		}
 		c.mu.Unlock()
+	}()
+	if !enabled {
+		if !cleanupCompleted {
+			cleanupContext, cleanupCancel := context.WithTimeout(c.ctx, ShutdownTimeout)
+			_ = c.stopRuntimeLocked(cleanupContext)
+			cleanupCancel()
+		} else {
+			c.observeRecoveryListener(ctx)
+		}
 		c.emit()
 		return
 	}
+
+	observation, err := c.platform.ObserveCodex(ctx)
+	if err != nil {
+		c.cancelNodeActivity()
+		_ = c.cdp.BindTarget(ctx, nil)
+		if c.nodeRuntime != nil {
+			_ = c.nodeRuntime.StopAllContext(ctx)
+		}
+		c.publishRuntimeStatus(epoch, AppStatus{Kind: StatusError, Message: stringPointer(err.Error())})
+		return
+	}
 	c.mu.Lock()
+	if c.runtimeEpoch != epoch || !c.config.Enabled || c.shuttingDown || ctx.Err() != nil {
+		c.mu.Unlock()
+		return
+	}
+	if c.runtime.Target != nil && (observation.Target == nil || !c.runtime.Target.Equal(*observation.Target)) {
+		if c.nodeCancel != nil {
+			c.nodeCancel()
+		}
+	}
+	c.runtime.Target = observation.Target
+	c.runtime.AttachSupported = observation.Target != nil
+	c.mu.Unlock()
+	if !observation.Running {
+		c.cancelNodeActivity()
+		_ = c.cdp.BindTarget(ctx, nil)
+		if c.nodeRuntime != nil {
+			_ = c.nodeRuntime.StopAllContext(ctx)
+		}
+		c.publishRuntimeStatus(epoch, AppStatus{Kind: StatusCodexNotRunning})
+		return
+	}
+	if observation.Target == nil {
+		c.cancelNodeActivity()
+		_ = c.cdp.BindTarget(ctx, nil)
+		if c.nodeRuntime != nil {
+			_ = c.nodeRuntime.StopAllContext(ctx)
+		}
+		c.publishRuntimeStatus(epoch, AppStatus{Kind: StatusRestartRequired, Message: stringPointer(ErrCodexIdentityUnverified.Error())})
+		return
+	}
+	if !observation.ListenerOwned {
+		c.cancelNodeActivity()
+		_ = c.cdp.BindTarget(ctx, nil)
+		if c.nodeRuntime != nil {
+			_ = c.nodeRuntime.StopAllContext(ctx)
+		}
+		c.publishRuntimeStatus(epoch, AppStatus{Kind: StatusRestartRequired})
+		return
+	}
+	if err := c.cdp.BindTarget(ctx, observation.Target); err != nil {
+		c.cancelNodeActivity()
+		c.publishRuntimeStatus(epoch, AppStatus{Kind: StatusError, Message: stringPointer(err.Error())})
+		return
+	}
+	c.mu.Lock()
+	if c.runtimeEpoch != epoch || !c.config.Enabled || c.shuttingDown || ctx.Err() != nil {
+		c.mu.Unlock()
+		return
+	}
+	if c.nodeLifetime == nil || c.nodeLifetime.Err() != nil {
+		c.nodeLifetime, c.nodeCancel = context.WithCancel(c.ctx)
+	}
+	nodeLifetime := c.nodeLifetime
 	c.disabledCleanupCompleted = false
 	packages := append([]Package(nil), c.packages...)
 	disabled := cloneSet(c.disabledPackageIDs)
 	trust := c.nodeTrustByPackageIDLocked()
 	nodeEnvironment := cloneNodeEnvironment(c.nodeEnvironment)
+	forceGeneration := c.forceGeneration
+	c.runtime.Recovery = RecoverySnapshot{PageCleanup: "pending", DebugListener: "open", Targets: []CDPCleanupTargetResult{}}
 	c.mu.Unlock()
 	if c.nodeRuntime != nil {
-		c.nodeRuntime.Reconcile(c.ctx, packages, disabled, trust, nodeEnvironment)
-		nodeErrors := c.nodeRuntime.RuntimeErrors()
-		c.mu.Lock()
-		for packageID, message := range nodeErrors {
-			c.packageRuntimeErrors[packageID] = message
-		}
-		c.mu.Unlock()
+		c.nodeRuntime.Reconcile(nodeLifetime, packages, disabled, trust, nodeEnvironment)
 	}
-
-	running, err := c.platform.IsCodexRunning(c.ctx)
-	if err != nil {
-		message := err.Error()
-		c.setStatus(AppStatus{Kind: StatusError, Message: &message})
-		return
-	}
-	if !running {
-		c.mu.Lock()
-		attempted := c.hasAttemptedInitialLaunch
-		if !attempted {
-			c.hasAttemptedInitialLaunch = true
-			c.status = AppStatus{Kind: StatusLaunchingCodex}
-		}
-		c.mu.Unlock()
-		if attempted {
-			c.setStatus(AppStatus{Kind: StatusCodexNotRunning})
-			return
-		}
-		if err := c.platform.LaunchCodex(c.ctx, c.codexLaunchOptions()); err != nil {
-			message := err.Error()
-			c.logger.Error("自动启动 Codex 失败：" + message)
-			c.setStatus(AppStatus{Kind: StatusError, Message: &message})
-			return
-		}
-		c.logger.Info("Codex 未运行，已自动使用本地 CDP 参数启动")
-		c.setStatus(AppStatus{Kind: StatusWaitingForCDP})
-		return
-	}
-	c.mu.Lock()
-	c.hasAttemptedInitialLaunch = true
-	forceGeneration := c.forceGeneration
-	c.mu.Unlock()
 	nodeRunnable := map[string]bool{}
 	if c.nodeRuntime != nil {
-		runningNodePackages := c.nodeRuntime.RunningPackageIDs()
-		for packageID, mode := range trust {
-			if mode != "" && runningNodePackages[packageID] {
+		for packageID := range c.nodeRuntime.RunningPackageIDs() {
+			if trust[packageID] != "" {
 				nodeRunnable[packageID] = true
 			}
 		}
 	}
 	loadResult := c.store.LoadPayload(packages, disabled, nodeRunnable)
-	c.mu.Lock()
-	c.packagePayloadErrors = loadResult.PackageErrors
-	c.mu.Unlock()
-	result, err := c.cdp.Inject(c.ctx, loadResult.Payload, forceGeneration)
-	if errors.Is(err, ErrCDPEndpointUnavailable) {
-		c.setStatus(AppStatus{Kind: StatusRestartRequired})
-		return
-	}
+	result, err := c.cdp.Inject(ctx, loadResult.Payload, forceGeneration)
 	if err != nil {
-		message := err.Error()
-		c.logger.Error("CDP 刷新失败：" + message)
-		c.setStatus(AppStatus{Kind: StatusError, Message: &message})
-		return
+		c.cancelNodeActivity()
 	}
 	c.mu.Lock()
-	combinedRuntimeErrors := map[string]string{}
+	if c.shuttingDown || !c.config.Enabled || c.runtimeEpoch != epoch {
+		c.mu.Unlock()
+		return
+	}
+	c.packagePayloadErrors = loadResult.PackageErrors
+	combined := map[string]string{}
 	if c.nodeRuntime != nil {
-		combinedRuntimeErrors = c.nodeRuntime.RuntimeErrors()
+		combined = c.nodeRuntime.RuntimeErrors()
 	}
 	for packageID, message := range result.PackageErrors {
-		combinedRuntimeErrors[packageID] = message
+		combined[packageID] = message
 	}
-	if !stringMapsEqual(combinedRuntimeErrors, c.packageRuntimeErrors) {
-		for packageID, message := range result.PackageErrors {
-			c.logger.Error("功能包 " + packageID + " 运行失败：" + message)
-		}
-		c.packageRuntimeErrors = combinedRuntimeErrors
-	}
+	c.packageRuntimeErrors = combined
 	switch {
+	case errors.Is(err, ErrCDPEndpointUnavailable):
+		c.status = AppStatus{Kind: StatusRestartRequired}
+	case err != nil:
+		c.status = AppStatus{Kind: StatusError, Message: stringPointer(err.Error())}
 	case result.TargetCount == 0:
 		c.status = AppStatus{Kind: StatusWaitingForPage}
 	case result.SuccessCount > 0:
 		c.status = AppStatus{Kind: StatusConnected, TargetCount: result.SuccessCount}
-		if result.FailureCount() > 0 {
-			c.logger.Error("部分 Codex 页面注入失败：" + intString(result.FailureCount()) + "/" + intString(result.TargetCount))
-		}
 	default:
-		message := "发现 Codex 页面，但注入没有成功"
-		c.status = AppStatus{Kind: StatusError, Message: &message}
+		c.status = AppStatus{Kind: StatusError, Message: stringPointer("页面没有确认增强结果")}
 	}
 	c.mu.Unlock()
 	c.emit()
+}
+
+func (c *Controller) cancelNodeActivity() {
+	c.mu.Lock()
+	if c.nodeCancel != nil {
+		c.nodeCancel()
+	}
+	c.mu.Unlock()
+}
+
+func (c *Controller) observeRecoveryListener(ctx context.Context) {
+	c.mu.Lock()
+	if c.runtime.Target == nil && len(c.runtime.Recovery.Targets) == 0 {
+		c.runtime.Recovery.DebugListener = "unknown"
+		c.mu.Unlock()
+		return
+	}
+	c.mu.Unlock()
+	observation, err := c.platform.ObserveCodex(ctx)
+	listener := "unknown"
+	if err == nil && observation.ListenerObserved {
+		if observation.ListenerPresent {
+			listener = "open"
+		} else {
+			listener = "closed"
+		}
+	}
+	c.mu.Lock()
+	c.runtime.Recovery.DebugListener = listener
+	c.mu.Unlock()
+}
+
+func (c *Controller) publishRuntimeStatus(epoch uint64, status AppStatus) {
+	c.mu.Lock()
+	if c.runtimeEpoch != epoch || !c.config.Enabled || c.shuttingDown {
+		c.mu.Unlock()
+		return
+	}
+	c.status = status
+	c.mu.Unlock()
+	c.emit()
+}
+
+func (c *Controller) stopRuntimeLocked(ctx context.Context) error {
+	nodeResults := make(chan error, 1)
+	go func() {
+		if c.nodeRuntime != nil {
+			nodeResults <- c.nodeRuntime.StopAllContext(ctx)
+		} else {
+			nodeResults <- nil
+		}
+	}()
+	result, cleanupError := c.cdp.CleanupAllTargets(ctx)
+	recovery := RecoverySnapshot{InjectionStopped: true, PageCleanup: "pending", DebugListener: "unknown", Targets: result.Targets}
+	if cleanupError == nil && result.Complete() {
+		recovery.PageCleanup = "confirmed"
+		if result.TargetCount == 0 {
+			recovery.PageCleanup = "notNeeded"
+		}
+	}
+	if err := lockWithContext(ctx, &c.mu); err != nil {
+		return errors.Join(cleanupError, err)
+	}
+	hasTarget := c.runtime.Target != nil || len(c.runtime.Recovery.Targets) > 0 || result.TargetCount > 0
+	c.mu.Unlock()
+	// An idle companion has no debug listener of its own to verify. Starting an
+	// unrelated platform probe here can exhaust the entire shutdown budget.
+	if hasTarget {
+		observation, observationError := c.platform.ObserveCodex(ctx)
+		if observationError == nil && observation.ListenerObserved {
+			if observation.ListenerPresent {
+				recovery.DebugListener = "open"
+			} else {
+				recovery.DebugListener = "closed"
+			}
+		}
+	}
+	var nodeError error
+	select {
+	case nodeError = <-nodeResults:
+	case <-ctx.Done():
+		nodeError = ctx.Err()
+	}
+	failure := errors.Join(nodeError, cleanupError)
+	if err := lockWithContext(ctx, &c.mu); err != nil {
+		return errors.Join(failure, err)
+	}
+	c.runtime.Recovery = recovery
+	c.disabledCleanupCompleted = failure == nil && result.Complete()
+	c.packageRuntimeErrors = map[string]string{}
+	if failure != nil {
+		c.status = AppStatus{Kind: StatusRecoveryPending, Message: stringPointer(failure.Error())}
+	} else {
+		c.status = AppStatus{Kind: StatusDisabled}
+	}
+	c.mu.Unlock()
+	return failure
 }
 
 func (c *Controller) setStatus(status AppStatus) {
@@ -207,76 +342,41 @@ func (c *Controller) setStatus(status AppStatus) {
 }
 
 func (c *Controller) OpenCodex() error {
-	running, err := c.platform.IsCodexRunning(c.ctx)
+	return c.launchCodex(CodexLaunchNormal)
+}
+
+func (c *Controller) launchCodex(mode CodexLaunchMode) error {
+	ctx, cancel := context.WithTimeout(c.ctx, 5*time.Second)
+	defer cancel()
+	if err := lockWithContext(ctx, &c.runtimeMu); err != nil {
+		return err
+	}
+	defer c.runtimeMu.Unlock()
+	observation, err := c.platform.ObserveCodex(ctx)
 	if err != nil {
 		return err
 	}
-	if running {
-		return c.platform.ActivateCodex(c.ctx)
+	if observation.Running {
+		if mode == CodexLaunchEnhanced {
+			return ErrManualCodexExitRequired
+		}
+		return c.platform.ActivateCodex(ctx)
 	}
-	c.mu.Lock()
-	c.hasAttemptedInitialLaunch = true
-	c.status = AppStatus{Kind: StatusLaunchingCodex}
-	c.mu.Unlock()
-	c.emit()
-	if err := c.platform.LaunchCodex(c.ctx, c.codexLaunchOptions()); err != nil {
-		message := err.Error()
-		c.setStatus(AppStatus{Kind: StatusError, Message: &message})
+	c.setStatus(AppStatus{Kind: StatusLaunchingCodex})
+	if err := c.platform.LaunchCodex(ctx, c.codexLaunchOptions(mode)); err != nil {
+		c.setStatus(AppStatus{Kind: StatusError, Message: stringPointer(err.Error())})
 		return err
 	}
-	c.logger.Info("已使用本地 CDP 参数启动 Codex")
+	c.logger.Info("用户已启动 Codex（" + string(mode) + "）")
 	c.setStatus(AppStatus{Kind: StatusWaitingForCDP})
 	return nil
 }
 
-func (c *Controller) RestartCodex() {
-	c.mu.Lock()
-	c.hasAttemptedInitialLaunch = true
-	c.status = AppStatus{Kind: StatusLaunchingCodex}
-	c.mu.Unlock()
-	c.emit()
-	options := c.codexLaunchOptions()
-	go func() {
-		if err := c.platform.RestartCodex(c.ctx, options); err != nil {
-			message := err.Error()
-			c.logger.Error("重启 Codex 失败：" + message)
-			c.setStatus(AppStatus{Kind: StatusError, Message: &message})
-			return
-		}
-		c.logger.Info("Codex 已重启并开启本地 CDP")
-		c.setStatus(AppStatus{Kind: StatusWaitingForCDP})
-	}()
-}
+// This action is retained in the protocol as an explicit enhanced launch. It
+// never exits or kills the official app; an existing instance requires manual exit.
+func (c *Controller) RestartCodex() error { return c.launchCodex(CodexLaunchEnhanced) }
 
-func (c *Controller) RestartCodexUI() error {
-	c.mu.Lock()
-	if c.restartingCodexUI {
-		c.mu.Unlock()
-		return errors.New("Codex 界面正在重启，请稍候")
-	}
-	c.restartingCodexUI = true
-	c.mu.Unlock()
-	c.emit()
-	defer func() {
-		c.mu.Lock()
-		c.restartingCodexUI = false
-		c.mu.Unlock()
-		c.emit()
-	}()
-
-	ctx, cancel := context.WithTimeout(c.ctx, 20*time.Second)
-	defer cancel()
-	result, err := c.cdp.ReloadAllTargets(ctx)
-	if err != nil {
-		c.logger.Error("重启 Codex 界面失败：" + err.Error())
-		return err
-	}
-	c.mu.Lock()
-	c.forceGeneration++
-	c.mu.Unlock()
-	c.logger.Info("已重启 " + intString(result.SuccessCount) + " 个 Codex 界面，等待重新注入")
-	return nil
-}
+func (c *Controller) RestartCodexUI() error { return ErrRendererReloadUnsafe }
 
 func (c *Controller) Reinject() {
 	c.mu.Lock()
@@ -351,7 +451,7 @@ func (c *Controller) startPackageBuild(pkg Package, installDependencies, allowCo
 		}
 		c.mu.Unlock()
 		if err != nil {
-			c.logger.Error("功能包 " + pkg.DisplayName() + " 编译失败：" + err.Error())
+			c.logger.Error("功能包 " + pkg.DisplayName() + " 编译失败：class=" + diagnosticErrorClass(err))
 			c.emit()
 			return
 		}

@@ -11,9 +11,13 @@ func (c *Controller) SetLanguage(language AppLanguage) error {
 		c.mu.Unlock()
 		return nil
 	}
-	c.config.Language = language
-	err := c.persistConfigurationLocked()
+	next := c.config
+	next.Language = language
+	err := c.persistConfigurationCandidateLocked(next)
 	c.mu.Unlock()
+	if err != nil {
+		return err
+	}
 	c.emit()
-	return err
+	return nil
 }

@@ -30,7 +30,17 @@ func (p *darwinPlatform) IsCodexRunning(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	if err := requireCommandSuccess(result, "观察 Codex"); err != nil {
+		return false, err
+	}
 	return result.Status == 0 && strings.TrimSpace(result.Output) != "", nil
+}
+
+func (p *darwinPlatform) ObserveCodex(ctx context.Context) (CodexObservation, error) {
+	// LaunchServices proves bundle presence, but not CDP listener ownership. Keep
+	// attachment unavailable until a platform adapter can verify the full identity.
+	running, err := p.IsCodexRunning(ctx)
+	return CodexObservation{Running: running}, err
 }
 
 func (p *darwinPlatform) ActivateCodex(ctx context.Context) error {
@@ -42,8 +52,18 @@ func (p *darwinPlatform) ActivateCodex(ctx context.Context) error {
 }
 
 func (p *darwinPlatform) LaunchCodex(ctx context.Context, options CodexLaunchOptions) error {
+	if options.Mode == CodexLaunchEnhanced {
+		return errors.Join(errors.ErrUnsupported, ErrCodexIdentityUnverified)
+	}
 	launchArguments := codexLaunchArguments(options, runtime.GOOS)
-	arguments := append([]string{"-n", "-b", CodexBundleIdentifier, "--args"}, launchArguments...)
+	arguments := []string{"-b", CodexBundleIdentifier}
+	if options.Mode == CodexLaunchEnhanced {
+		arguments = append([]string{"-n"}, arguments...)
+	}
+	if len(launchArguments) > 0 {
+		arguments = append(arguments, "--args")
+		arguments = append(arguments, launchArguments...)
+	}
 	result, err := p.runner.Run(ctx, "/usr/bin/open", arguments, "", environmentSlice(environmentMap()))
 	if err != nil {
 		return err
@@ -51,42 +71,21 @@ func (p *darwinPlatform) LaunchCodex(ctx context.Context, options CodexLaunchOpt
 	if result.Status == 0 {
 		return nil
 	}
-	const fallback = "/Applications/ChatGPT.app"
-	if directoryExists(fallback) {
-		arguments = append([]string{"-n", fallback, "--args"}, launchArguments...)
-		result, err = p.runner.Run(ctx, "/usr/bin/open", arguments, "", environmentSlice(environmentMap()))
-		if err != nil {
-			return err
-		}
-		if result.Status == 0 {
-			return nil
-		}
-	}
-	return errors.New("没有找到 ChatGPT.app（Codex 桌面客户端），或 Codex 启动失败。")
+	return errors.New("没有找到已注册的官方 Codex，或 Codex 启动失败。")
 }
 
 func (p *darwinPlatform) RestartCodex(ctx context.Context, options CodexLaunchOptions) error {
-	_, _ = p.runner.Run(ctx, "/usr/bin/killall", []string{"-TERM", "ChatGPT"}, "", environmentSlice(environmentMap()))
-	for range 25 {
-		running, _ := p.IsCodexRunning(ctx)
-		if !running {
-			return p.LaunchCodex(ctx, options)
-		}
-		if err := waitContext(ctx, 200*time.Millisecond); err != nil {
-			return err
-		}
+	if options.Mode == CodexLaunchEnhanced {
+		return errors.Join(errors.ErrUnsupported, ErrCodexIdentityUnverified)
 	}
-	_, _ = p.runner.Run(ctx, "/usr/bin/killall", []string{"-KILL", "ChatGPT"}, "", environmentSlice(environmentMap()))
-	for range 15 {
-		running, _ := p.IsCodexRunning(ctx)
-		if !running {
-			return p.LaunchCodex(ctx, options)
-		}
-		if err := waitContext(ctx, 200*time.Millisecond); err != nil {
-			return err
-		}
+	running, err := p.IsCodexRunning(ctx)
+	if err != nil {
+		return err
 	}
-	return errors.New("Codex 未能正常退出，请手动退出后重试")
+	if running {
+		return ErrManualCodexExitRequired
+	}
+	return p.LaunchCodex(ctx, options)
 }
 
 func (*darwinPlatform) Architecture() string { return runtime.GOARCH }

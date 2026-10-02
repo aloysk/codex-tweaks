@@ -35,7 +35,7 @@ final class SparkleUpdateController: NSObject, SPUUpdaterDelegate {
     }
 
     func start() {
-        guard !hasStarted, !Self.isRunningTests else { return }
+        guard ApplicationIdentity.updatesEnabled, !hasStarted, !Self.isRunningTests else { return }
         do {
             try updater.start()
             hasStarted = true

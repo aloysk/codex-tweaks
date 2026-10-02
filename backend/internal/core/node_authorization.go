@@ -121,7 +121,7 @@ func (c *Controller) nodeTrustByPackageIDLocked() map[string]string {
 }
 
 func (c *Controller) enabledNodeEnvironmentLocked() *NodeEnvironment {
-	if !c.config.Enabled {
+	if !c.config.Enabled || c.nodeLifetime == nil || c.nodeLifetime.Err() != nil || c.runtime.Target == nil || c.runtime.Recovery.DebugListener != "open" {
 		return nil
 	}
 	return cloneNodeEnvironment(c.nodeEnvironment)

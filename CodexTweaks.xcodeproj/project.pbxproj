@@ -26,6 +26,7 @@
 		6877641669E4507083E30A63 /* MacOSAppVisibilityController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 627661EEB9F033E025CC5AC1 /* MacOSAppVisibilityController.swift */; };
 		694CBBB375BCEEA660DB5163 /* AppStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C58B083F3D76F43FDC45941 /* AppStatus.swift */; };
 		6EE55D663F4BA7C8C133418A /* Tweaks in Resources */ = {isa = PBXBuildFile; fileRef = ED5BA7E20B31B6B736EF5A33 /* Tweaks */; };
+		762091D7C49FA2A8A84DD157 /* GeneratedPresentationContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFBAED99F1376AC7FE90B523 /* GeneratedPresentationContract.swift */; };
 		7824CE3D453FE429FB9B83A2 /* UpdateChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 710989624754350B9549F3B1 /* UpdateChecker.swift */; };
 		801487236AF0F6797A8F1341 /* GeneratedPresentationContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFBAED99F1376AC7FE90B523 /* GeneratedPresentationContract.swift */; };
 		8E9FE8CC865A7D7541AFAF34 /* PresentationText.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDC46BCBEBD8535824D33363 /* PresentationText.swift */; };
@@ -40,9 +41,11 @@
 		C90628F61E522C2FC62419A5 /* TweakPackageRemoteManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = DECCE54F4FF81979BBBAB5CC /* TweakPackageRemoteManager.swift */; };
 		DA607E1A3C45C42686489B72 /* BackendJSON.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25E3517257D811F2B1D3625A /* BackendJSON.swift */; };
 		DFD5E3A9CB13636716BDF09E /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = DFFFA7035AA0A0B5F1982477 /* Sparkle */; };
+		E1416863166E561FC4DC1EDD /* BackendClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ECD0C73EE0D60F0F6A53202 /* BackendClient.swift */; };
 		E33110037A563D6AD07FD34B /* TweakPackageModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2ED75A85C1B3152DC926A30F /* TweakPackageModels.swift */; };
 		E822BFAD340AA5116454FA0D /* AppStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C58B083F3D76F43FDC45941 /* AppStatus.swift */; };
 		E9018AF1601AFC8EDE07CBAD /* BackendProtocolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 752944AE65CF3C41046BE3B3 /* BackendProtocolTests.swift */; };
+		EFE43082D0E85F6448D80ABF /* BackendClientLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F38F687C3332FDB933C2F404 /* BackendClientLifecycleTests.swift */; };
 		F493B27D75B9DCF8AEA6273D /* SparkleLocalizationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD05BAEA4FC2428057D00725 /* SparkleLocalizationTests.swift */; };
 		F7A1ECDD4A02A3A692A8694D /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12AEDA74C8286F095B2A4E60 /* AppModel.swift */; };
 		F9BD6403F32C8B53E9D5A3CD /* BackendProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = D46E6EAFFFA8697F8252BAFC /* BackendProtocol.swift */; };
@@ -69,8 +72,8 @@
 		6B0A1C530EDF076CED6EF41D /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		710989624754350B9549F3B1 /* UpdateChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateChecker.swift; sourceTree = "<group>"; };
 		752944AE65CF3C41046BE3B3 /* BackendProtocolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendProtocolTests.swift; sourceTree = "<group>"; };
-		7D31064D54183A1230D1918D /* Codex Tweaks.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Codex Tweaks.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		A272C33590B17E3938559A23 /* zh-Hant */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hant"; path = "zh-Hant.lproj/Localizable.strings"; sourceTree = "<group>"; };
+		B4AF793C08361C6CE668A206 /* Codex Tweaks Companion.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Codex Tweaks Companion.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		BD05BAEA4FC2428057D00725 /* SparkleLocalizationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SparkleLocalizationTests.swift; sourceTree = "<group>"; };
 		C054F18E9178A1188A15F944 /* CodexTweaksApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexTweaksApp.swift; sourceTree = "<group>"; };
 		C4404C8473050E6EB8C45541 /* ko */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ko; path = ko.lproj/Localizable.strings; sourceTree = "<group>"; };
@@ -79,6 +82,7 @@
 		DDC46BCBEBD8535824D33363 /* PresentationText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresentationText.swift; sourceTree = "<group>"; };
 		DECCE54F4FF81979BBBAB5CC /* TweakPackageRemoteManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TweakPackageRemoteManager.swift; sourceTree = "<group>"; };
 		ED5BA7E20B31B6B736EF5A33 /* Tweaks */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Tweaks; path = app/Resources/Tweaks; sourceTree = SOURCE_ROOT; };
+		F38F687C3332FDB933C2F404 /* BackendClientLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendClientLifecycleTests.swift; sourceTree = "<group>"; };
 		F53421B72A4751C046846C60 /* MainWindowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainWindowView.swift; sourceTree = "<group>"; };
 		F659FBB7C357009B1FE4C80E /* CodexTweaksBundleTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CodexTweaksBundleTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		F8078C635651B9E12B769538 /* PresentationColor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresentationColor.swift; sourceTree = "<group>"; };
@@ -102,6 +106,7 @@
 			isa = PBXGroup;
 			children = (
 				3586156F50638102CDE5AB2C /* BackendBundleTests.swift */,
+				F38F687C3332FDB933C2F404 /* BackendClientLifecycleTests.swift */,
 				752944AE65CF3C41046BE3B3 /* BackendProtocolTests.swift */,
 				68689767E171B444813D5B27 /* BuiltAppBundle.swift */,
 				BD05BAEA4FC2428057D00725 /* SparkleLocalizationTests.swift */,
@@ -184,7 +189,7 @@
 		DC9550B98A120B5A32C477F0 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				7D31064D54183A1230D1918D /* Codex Tweaks.app */,
+				B4AF793C08361C6CE668A206 /* Codex Tweaks Companion.app */,
 				F659FBB7C357009B1FE4C80E /* CodexTweaksBundleTests.xctest */,
 				3F957412A0DB83396B755B2E /* CodexTweaksTests.xctest */,
 			);
@@ -246,7 +251,7 @@
 				DFFFA7035AA0A0B5F1982477 /* Sparkle */,
 			);
 			productName = CodexTweaks;
-			productReference = 7D31064D54183A1230D1918D /* Codex Tweaks.app */;
+			productReference = B4AF793C08361C6CE668A206 /* Codex Tweaks Companion.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -339,6 +344,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				E822BFAD340AA5116454FA0D /* AppStatus.swift in Sources */,
+				E1416863166E561FC4DC1EDD /* BackendClient.swift in Sources */,
+				EFE43082D0E85F6448D80ABF /* BackendClientLifecycleTests.swift in Sources */,
 				DA607E1A3C45C42686489B72 /* BackendJSON.swift in Sources */,
 				F9BD6403F32C8B53E9D5A3CD /* BackendProtocol.swift in Sources */,
 				E9018AF1601AFC8EDE07CBAD /* BackendProtocolTests.swift in Sources */,
@@ -358,6 +365,7 @@
 			files = (
 				6731E4E39CE874F8DCDE4299 /* BackendBundleTests.swift in Sources */,
 				28FCCB3B972EDF184DA711DB /* BuiltAppBundle.swift in Sources */,
+				762091D7C49FA2A8A84DD157 /* GeneratedPresentationContract.swift in Sources */,
 				F493B27D75B9DCF8AEA6273D /* SparkleLocalizationTests.swift in Sources */,
 				8F7B53382196600088DFA2F2 /* TestIsolationTests.swift in Sources */,
 			);
@@ -419,7 +427,7 @@
 					"@loader_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.zgccrui.CodexTweaksBundleTests;
+				PRODUCT_BUNDLE_IDENTIFIER = "io.github.aloysk.codexcompanion.bundle-tests";
 				SDKROOT = macosx;
 			};
 			name = Release;
@@ -436,7 +444,7 @@
 					"@loader_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.zgccrui.CodexTweaksTests;
+				PRODUCT_BUNDLE_IDENTIFIER = io.github.aloysk.codexcompanion.tests;
 				SDKROOT = macosx;
 			};
 			name = Debug;
@@ -453,9 +461,9 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.zgccrui.CodexTweaks.Debug;
+				PRODUCT_BUNDLE_IDENTIFIER = io.github.aloysk.codexcompanion.debug;
 				PRODUCT_MODULE_NAME = CodexTweaks;
-				PRODUCT_NAME = "Codex Tweaks";
+				PRODUCT_NAME = "Codex Tweaks Companion";
 				SDKROOT = macosx;
 			};
 			name = Debug;
@@ -517,7 +525,6 @@
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
-				SPARKLE_PUBLIC_ED_KEY = "DwmQV4Y5oLUhQg3qPRw3RCd3cYTjYhAm31smb5mA0T4=";
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 5.0;
@@ -536,7 +543,7 @@
 					"@loader_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.zgccrui.CodexTweaksBundleTests;
+				PRODUCT_BUNDLE_IDENTIFIER = "io.github.aloysk.codexcompanion.bundle-tests";
 				SDKROOT = macosx;
 			};
 			name = Debug;
@@ -553,9 +560,9 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.zgccrui.CodexTweaks;
+				PRODUCT_BUNDLE_IDENTIFIER = io.github.aloysk.codexcompanion;
 				PRODUCT_MODULE_NAME = CodexTweaks;
-				PRODUCT_NAME = "Codex Tweaks";
+				PRODUCT_NAME = "Codex Tweaks Companion";
 				SDKROOT = macosx;
 			};
 			name = Release;
@@ -624,7 +631,6 @@
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
-				SPARKLE_PUBLIC_ED_KEY = "DwmQV4Y5oLUhQg3qPRw3RCd3cYTjYhAm31smb5mA0T4=";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
@@ -643,7 +649,7 @@
 					"@loader_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.zgccrui.CodexTweaksTests;
+				PRODUCT_BUNDLE_IDENTIFIER = io.github.aloysk.codexcompanion.tests;
 				SDKROOT = macosx;
 			};
 			name = Release;

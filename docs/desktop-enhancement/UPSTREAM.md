@@ -57,13 +57,21 @@ These are static source findings at the baseline, not results of an executed pro
 
 ## Fork distribution identity
 
-Forking source does not establish an independent install or update channel:
+The PR3 implementation establishes a fork-owned identity in `backend/internal/core/identity.go`, emitted to `contract/application-identity.json` and native generated constants:
 
-- `UpdateRepository` in `backend/internal/core/update.go` still names `codex-tweaks/codex-tweaks`.
-- `scripts/package-windows.ps1` still uses the upstream `com.crzhichen.CodexTweaks.$architecture` package ID and upstream title/author metadata.
-- Application IDs, package IDs, update feeds, settings/data directories, signing identity and uninstall ownership must be reviewed together before distributing an installable fork.
+- Application/data name: `Codex Tweaks Companion`; bundle ID: `io.github.aloysk.codexcompanion`.
+- Windows package IDs: the bundle ID plus `.x64` or `.arm64`; artifact prefix: `Codex-Tweaks-Companion`.
+- Repository: `aloysk/codex-tweaks`; runtime environment overrides use `CODEX_COMPANION_`.
+- Store data, cache and Node trust start independently; upstream state is not imported.
+- Application updates are disabled. No upstream Sparkle feed/key is shipped, and the native update actions cannot contact or install from the upstream release channel.
 
-The default product decision is side-by-side development with separate fork-owned state and no automatic migration. The final identifiers and branding must be chosen before the first installable fork build, then treated as persistent compatibility contracts. Preparation does not rename upstream namespaces, publish installers, create a release, or configure a fork updater. The Release workflow was disabled during preparation; this is separate from changing product update endpoints. CI artifacts remain verification outputs, not isolated installers approved for daily use.
+These names are persistent distribution contracts. Internal source module/namespace names remain unchanged. The Release workflow remains disabled; signing, installation, update and uninstall acceptance still belong to the distribution gate. Build and synthetic package-identity checks do not establish daily-use installation or real-device support.
+
+## Runtime implementation boundary
+
+PR3 replaces broad name-based termination and automatic launch with passive observation, verified Windows process/listener ownership, normal launch and explicit enhanced launch. An existing official instance must be saved and normally exited by its user; the companion cannot reload or terminate it. On macOS, complete listener ownership has not been established, so renderer attachment remains unsupported rather than assuming that a responding local port is safe.
+
+Stopping enhancement cancels its work, invalidates its page lease before callbacks and records per-target cleanup. Failed callbacks remain retryable. A small inactive page lease remains until page exit to reject late queued evaluations; stopping injection cannot close the official app's debug listener. The runtime reports these outcomes separately. Synthetic process/WebSocket/DOM fixtures validate this boundary; official-renderer and real installation acceptance remain outstanding.
 
 ## Initial development environment snapshot
 

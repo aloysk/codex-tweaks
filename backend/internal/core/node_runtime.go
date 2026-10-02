@@ -291,7 +291,7 @@ func (s *NodeRuntimeSupervisor) recordStartFailure(packageID, authorizationID, m
 		start.Cancel()
 	}
 	if recorded && s.logger != nil {
-		s.logger.Error("Node 功能包 " + packageID + " 启动失败：" + message)
+		s.logger.Error("Node 功能包 " + packageID + " 启动失败（外部正文未记录）")
 	}
 }
 
@@ -355,7 +355,15 @@ func (s *NodeRuntimeSupervisor) StopPackage(packageID string) {
 }
 
 func (s *NodeRuntimeSupervisor) StopAll() {
-	s.mu.Lock()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	_ = s.StopAllContext(ctx)
+}
+
+func (s *NodeRuntimeSupervisor) StopAllContext(ctx context.Context) error {
+	if err := lockWithContext(ctx, &s.mu); err != nil {
+		return err
+	}
 	processes := make([]*nodeRuntimeProcess, 0, len(s.processes))
 	for _, process := range s.processes {
 		processes = append(processes, process)
@@ -369,11 +377,26 @@ func (s *NodeRuntimeSupervisor) StopAll() {
 	s.failures = map[string]nodeRuntimeFailure{}
 	s.mu.Unlock()
 	for _, start := range starts {
-		start.Cancel()
+		if start.Cancel != nil {
+			start.Cancel()
+		}
 	}
+	results := make(chan error, len(processes))
 	for _, process := range processes {
-		process.stop()
+		go func(process *nodeRuntimeProcess) { results <- process.stopContext(ctx) }(process)
 	}
+	var failures []error
+	for range processes {
+		select {
+		case err := <-results:
+			if err != nil {
+				failures = append(failures, err)
+			}
+		case <-ctx.Done():
+			return errors.Join(append(failures, ctx.Err())...)
+		}
+	}
+	return errors.Join(failures...)
 }
 
 func startNodeRuntimeProcess(
@@ -488,11 +511,24 @@ func (p *nodeRuntimeProcess) readStdout(reader io.Reader) {
 }
 
 func (p *nodeRuntimeProcess) readStderr(reader io.Reader) {
-	scanner := bufio.NewScanner(reader)
-	scanner.Buffer(make([]byte, 16*1024), 1024*1024)
-	for scanner.Scan() {
-		if p.logger != nil {
-			p.logger.Info("Node[" + p.packageID + "] " + scanner.Text())
+	buffered := bufio.NewReaderSize(reader, 16*1024)
+	packageID := safeDiagnosticText(p.packageID, 256)
+	var observedBytes int64
+	for {
+		fragment, err := buffered.ReadSlice('\n')
+		observedBytes += int64(len(fragment))
+		if errors.Is(err, bufio.ErrBufferFull) {
+			continue // Drain long lines without retaining or persisting their body.
+		}
+		if observedBytes > 0 && p.logger != nil {
+			p.logger.Info(fmt.Sprintf("Node stderr: package=%q bytes=%d (body omitted)", packageID, observedBytes))
+		}
+		observedBytes = 0
+		if err != nil {
+			if !errors.Is(err, io.EOF) && p.logger != nil {
+				p.logger.Warn(fmt.Sprintf("Node stderr read failed: package=%q (details omitted)", packageID))
+			}
+			return
 		}
 	}
 }
@@ -600,22 +636,31 @@ func (p *nodeRuntimeProcess) writeLine(message []byte) error {
 }
 
 func (p *nodeRuntimeProcess) stop() {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	_ = p.stopContext(ctx)
+}
+
+func (p *nodeRuntimeProcess) stopContext(ctx context.Context) error {
 	p.stopOnce.Do(func() {
 		p.mu.Lock()
 		p.stopping = true
 		p.mu.Unlock()
-		_ = p.writeLine([]byte(`{"type":"shutdown"}`))
-		select {
-		case <-p.done:
-		case <-time.After(2 * time.Second):
-			if p.command.Process != nil {
-				_ = p.command.Process.Kill()
-			}
-		}
+		// A package can stop reading stdin. The write must not hold shutdown open.
+		go func() { _ = p.writeLine([]byte(`{"type":"shutdown"}`)) }()
+	})
+	select {
+	case <-p.done:
+		return nil
+	case <-ctx.Done():
 		if p.cancel != nil {
 			p.cancel()
 		}
-	})
+		if p.command != nil && p.command.Process != nil {
+			_ = p.command.Process.Kill()
+		}
+		return ctx.Err()
+	}
 }
 
 const nodeRuntimeRunnerSource = `

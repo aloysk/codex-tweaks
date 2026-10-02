@@ -14,6 +14,9 @@ import (
 
 type idleControllerTestPlatform struct{}
 
+func (idleControllerTestPlatform) ObserveCodex(context.Context) (CodexObservation, error) {
+	return CodexObservation{}, nil
+}
 func (idleControllerTestPlatform) IsCodexRunning(context.Context) (bool, error) { return false, nil }
 func (idleControllerTestPlatform) ActivateCodex(context.Context) error          { return nil }
 func (idleControllerTestPlatform) LaunchCodex(context.Context, CodexLaunchOptions) error {
@@ -31,7 +34,7 @@ func TestControllerUsesGoDefaultsReadsSkillAndDisablesNewPackages(t *testing.T) 
 	if err := os.WriteFile(skillPath, []byte(skill), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	controller, err := NewController(
+	controller, err := newTestController(
 		InitializeParams{
 			ApplicationSupportDirectory: filepath.Join(root, "support"),
 			CacheDirectory:              filepath.Join(root, "cache"),
@@ -45,10 +48,10 @@ func TestControllerUsesGoDefaultsReadsSkillAndDisablesNewPackages(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer controller.cancel()
+	defer controller.Shutdown()
 
 	initial := controller.Snapshot()
-	if !initial.Enabled || !initial.Update.AutoCheck || initial.Update.CurrentVersion != "0.1.0" {
+	if initial.Enabled || initial.Update.AutoCheck != ApplicationUpdatesEnabled || initial.Update.CurrentVersion != "0.1.0" {
 		t.Fatalf("unexpected Go defaults: %#v", initial)
 	}
 	contents, err := controller.ReadAuthoringPrompt()
@@ -105,7 +108,7 @@ func TestControllerDetectsPersistsAndRestoresLanguagePreference(t *testing.T) {
 		CurrentVersion:              "0.1.0",
 		BuildNumber:                 "1",
 	}
-	controller, err := NewController(params, nil, ControllerDependencies{DisableBackground: true})
+	controller, err := newTestController(params, nil, ControllerDependencies{DisableBackground: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,14 +122,14 @@ func TestControllerDetectsPersistsAndRestoresLanguagePreference(t *testing.T) {
 	if got := controller.Snapshot().Presentation; got.LanguagePreference != "en" || got.Locale != "en" || got.Text["language.title"] != "Language" {
 		t.Fatalf("unexpected manual language presentation: %#v", got)
 	}
-	controller.cancel()
+	_ = controller.Shutdown()
 
 	params.PreferredLanguages = []string{"ja-JP"}
-	reopened, err := NewController(params, nil, ControllerDependencies{DisableBackground: true})
+	reopened, err := newTestController(params, nil, ControllerDependencies{DisableBackground: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer reopened.cancel()
+	defer reopened.Shutdown()
 	if got := reopened.Snapshot().Presentation; got.LanguagePreference != "en" || got.Locale != "en" {
 		t.Fatalf("persisted language was not restored: %#v", got)
 	}
@@ -146,7 +149,7 @@ func TestControllerPersistsDisableGPUAccelerationPreference(t *testing.T) {
 		CurrentVersion:              "0.1.0",
 		BuildNumber:                 "1",
 	}
-	controller, err := NewController(params, nil, ControllerDependencies{DisableBackground: true})
+	controller, err := newTestController(params, nil, ControllerDependencies{DisableBackground: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,13 +162,13 @@ func TestControllerPersistsDisableGPUAccelerationPreference(t *testing.T) {
 	if snapshot := controller.Snapshot(); !snapshot.DisableGPUAcceleration {
 		t.Fatalf("snapshot did not expose the GPU preference: %#v", snapshot)
 	}
-	controller.cancel()
+	_ = controller.Shutdown()
 
-	restarted, err := NewController(params, nil, ControllerDependencies{DisableBackground: true})
+	restarted, err := newTestController(params, nil, ControllerDependencies{DisableBackground: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer restarted.cancel()
+	defer restarted.Shutdown()
 	if !restarted.Snapshot().DisableGPUAcceleration {
 		t.Fatal("GPU preference was not restored from app-state.json")
 	}
@@ -174,7 +177,7 @@ func TestControllerPersistsDisableGPUAccelerationPreference(t *testing.T) {
 func TestControllerDeletesLocalPackageSourceBuildAndSettings(t *testing.T) {
 	root := t.TempDir()
 	events := make(chan AppSnapshot, 16)
-	controller, err := NewController(
+	controller, err := newTestController(
 		InitializeParams{
 			ApplicationSupportDirectory: filepath.Join(root, "support"),
 			CacheDirectory:              filepath.Join(root, "cache"),
@@ -187,7 +190,7 @@ func TestControllerDeletesLocalPackageSourceBuildAndSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer controller.cancel()
+	defer controller.Shutdown()
 
 	directory := makeStorePackage(t, controller.store, "delete-sample", "delete-sample", "1.0.0", 12, nil, "")
 	if err := controller.ReloadPackages(); err != nil {
@@ -278,7 +281,7 @@ func TestDeveloperNodeAutomaticTrustNeverPersistsAcrossBackendRestart(t *testing
 		CurrentVersion:              "0.1.0",
 		BuildNumber:                 "1",
 	}
-	controller, err := NewController(params, nil, ControllerDependencies{DisableBackground: true})
+	controller, err := newTestController(params, nil, ControllerDependencies{DisableBackground: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -292,13 +295,13 @@ func TestDeveloperNodeAutomaticTrustNeverPersistsAcrossBackendRestart(t *testing
 		t.Fatalf("developer Node trust was not enabled: %#v", snapshot)
 	}
 	controller.nodeRuntime.StopAll()
-	controller.cancel()
+	_ = controller.Shutdown()
 
-	restarted, err := NewController(params, nil, ControllerDependencies{DisableBackground: true})
+	restarted, err := newTestController(params, nil, ControllerDependencies{DisableBackground: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer restarted.cancel()
+	defer restarted.Shutdown()
 	if snapshot := restarted.Snapshot(); !snapshot.DeveloperMode || snapshot.DeveloperAllowUnknownNode {
 		t.Fatalf("automatic Node trust persisted across restart: %#v", snapshot)
 	}
@@ -315,6 +318,13 @@ func TestGlobalMasterSwitchBlocksNodeRuntimeEnvironment(t *testing.T) {
 		t.Fatalf("disabled master switch exposed a Node runtime environment: %#v", environment)
 	}
 	controller.config.Enabled = true
+	if environment := controller.enabledNodeEnvironmentLocked(); environment != nil {
+		t.Fatal("unverified connection exposed Node execution")
+	}
+	controller.nodeLifetime = context.Background()
+	identity := syntheticCodexIdentity()
+	controller.runtime.Target = &identity
+	controller.runtime.Recovery.DebugListener = "open"
 	if environment := controller.enabledNodeEnvironmentLocked(); environment == nil || environment.NodePath != "/node" {
 		t.Fatalf("enabled master switch lost the Node runtime environment: %#v", environment)
 	}
@@ -328,7 +338,7 @@ func TestControllerRevokesExplicitNodeAuthorizationOnDisableAndRevisionChange(t 
 		CurrentVersion:              "0.1.0",
 		BuildNumber:                 "1",
 	}
-	controller, err := NewController(
+	controller, err := newTestController(
 		params,
 		nil,
 		ControllerDependencies{DisableBackground: true},
@@ -336,7 +346,7 @@ func TestControllerRevokesExplicitNodeAuthorizationOnDisableAndRevisionChange(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer controller.cancel()
+	defer controller.Shutdown()
 	controller.mu.Lock()
 	controller.config.Enabled = false
 	controller.disabledCleanupCompleted = true
@@ -397,14 +407,14 @@ func TestControllerRevokesExplicitNodeAuthorizationOnDisableAndRevisionChange(t 
 	if records := controller.nodeAuthorizations; len(records) != 1 {
 		t.Fatalf("global master switch revoked explicit authorization: %#v", records)
 	}
-	restarted, err := NewController(params, nil, ControllerDependencies{DisableBackground: true})
+	restarted, err := newTestController(params, nil, ControllerDependencies{DisableBackground: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if restartedNode := restarted.Snapshot().Packages[0].Node; restartedNode == nil || !restartedNode.ExplicitlyAuthorized {
 		t.Fatalf("explicit authorization did not survive a backend restart: %#v", restartedNode)
 	}
-	restarted.cancel()
+	_ = restarted.Shutdown()
 	if err := controller.SetPackageEnabled("node-lifecycle", false); err != nil {
 		t.Fatal(err)
 	}
@@ -447,7 +457,7 @@ func TestControllerRevokesExplicitNodeAuthorizationOnDisableAndRevisionChange(t 
 
 func TestControllerKeepsManualBuildAvailableForLocalPackageChanges(t *testing.T) {
 	root := t.TempDir()
-	controller, err := NewController(
+	controller, err := newTestController(
 		InitializeParams{
 			ApplicationSupportDirectory: filepath.Join(root, "support"),
 			CacheDirectory:              filepath.Join(root, "cache"),
@@ -460,7 +470,7 @@ func TestControllerKeepsManualBuildAvailableForLocalPackageChanges(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer controller.cancel()
+	defer controller.Shutdown()
 
 	directory := makeStorePackage(t, controller.store, "local-package", "local-package", "1.0.0", 0, nil, "")
 	if err := controller.ReloadPackages(); err != nil {
@@ -509,7 +519,7 @@ func TestControllerKeepsManualBuildAvailableForLocalPackageChanges(t *testing.T)
 func TestControllerLocalInstallEmitsSnapshotContainingPackage(t *testing.T) {
 	root := t.TempDir()
 	events := make(chan AppSnapshot, 8)
-	controller, err := NewController(
+	controller, err := newTestController(
 		InitializeParams{
 			ApplicationSupportDirectory: filepath.Join(root, "support"),
 			CacheDirectory:              filepath.Join(root, "cache"),
@@ -522,7 +532,7 @@ func TestControllerLocalInstallEmitsSnapshotContainingPackage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer controller.cancel()
+	defer controller.Shutdown()
 
 	source := filepath.Join(root, "local-package")
 	writeInstallerPackage(t, source, "local-install-sample", "1.0.0", nil)
@@ -555,7 +565,7 @@ func TestControllerLocalInstallEmitsSnapshotContainingPackage(t *testing.T) {
 func TestControllerExportsPackageAndPublishesOperationState(t *testing.T) {
 	root := t.TempDir()
 	events := make(chan AppSnapshot, 16)
-	controller, err := NewController(
+	controller, err := newTestController(
 		InitializeParams{
 			ApplicationSupportDirectory: filepath.Join(root, "support"),
 			CacheDirectory:              filepath.Join(root, "cache"),
@@ -568,7 +578,7 @@ func TestControllerExportsPackageAndPublishesOperationState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer controller.cancel()
+	defer controller.Shutdown()
 
 	makeStorePackage(t, controller.store, "export-sample", "export-sample", "1.2.3", 0, nil, "")
 	if err := controller.ReloadPackages(); err != nil {
@@ -609,7 +619,7 @@ func TestControllerExportsPackageAndPublishesOperationState(t *testing.T) {
 
 func TestControllerSnapshotSerializesEmptyDependencyStatusesAsArrays(t *testing.T) {
 	root := t.TempDir()
-	controller, err := NewController(
+	controller, err := newTestController(
 		InitializeParams{
 			ApplicationSupportDirectory: filepath.Join(root, "support"),
 			CacheDirectory:              filepath.Join(root, "cache"),
@@ -622,7 +632,7 @@ func TestControllerSnapshotSerializesEmptyDependencyStatusesAsArrays(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer controller.cancel()
+	defer controller.Shutdown()
 
 	makeStorePackage(t, controller.store, "no-dependencies", "no-dependencies", "1.0.0", 10, nil, "")
 	if err := controller.ReloadPackages(); err != nil {
@@ -645,7 +655,7 @@ func TestControllerSnapshotSerializesEmptyDependencyStatusesAsArrays(t *testing.
 func TestControllerDoesNotEmitUnchangedSnapshots(t *testing.T) {
 	root := t.TempDir()
 	eventCount := 0
-	controller, err := NewController(
+	controller, err := newTestController(
 		InitializeParams{
 			ApplicationSupportDirectory: filepath.Join(root, "support"),
 			CacheDirectory:              filepath.Join(root, "cache"),
@@ -658,7 +668,7 @@ func TestControllerDoesNotEmitUnchangedSnapshots(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer controller.cancel()
+	defer controller.Shutdown()
 
 	if eventCount != 1 {
 		t.Fatalf("initial event count = %d, want 1", eventCount)
@@ -681,7 +691,7 @@ func TestControllerDoesNotEmitUnchangedSnapshots(t *testing.T) {
 func TestControllerRejectsUnsupportedConfigurationSchema(t *testing.T) {
 	root := t.TempDir()
 	support := filepath.Join(root, "support")
-	stateDirectory := filepath.Join(support, "Codex Tweaks", "State")
+	stateDirectory := filepath.Join(support, ApplicationName, "State")
 	if err := os.MkdirAll(stateDirectory, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -693,7 +703,7 @@ func TestControllerRejectsUnsupportedConfigurationSchema(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := NewController(
+	_, err := newTestController(
 		InitializeParams{
 			ApplicationSupportDirectory: support,
 			CacheDirectory:              filepath.Join(root, "cache"),
@@ -708,14 +718,14 @@ func TestControllerRejectsUnsupportedConfigurationSchema(t *testing.T) {
 	}
 }
 
-func TestControllerUpdateFailureKeepsLastSuccessfulRelease(t *testing.T) {
+func TestControllerUnconfiguredUpdatesDoNotContactRemoteOrDiscardState(t *testing.T) {
 	root := t.TempDir()
 	requestSeen := make(chan *http.Request, 1)
 	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		requestSeen <- request.Clone(request.Context())
 		return nil, errors.New("test network failure")
 	})}
-	controller, err := NewController(
+	controller, err := newTestController(
 		InitializeParams{
 			ApplicationSupportDirectory: filepath.Join(root, "support"),
 			CacheDirectory:              filepath.Join(root, "cache"),
@@ -728,19 +738,17 @@ func TestControllerUpdateFailureKeepsLastSuccessfulRelease(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer controller.cancel()
+	defer controller.Shutdown()
 	previous := GitHubRelease{TagName: "v1.1.0", Assets: []GitHubAsset{}}
 	controller.mu.Lock()
 	controller.latestRelease = &previous
 	controller.mu.Unlock()
 
-	controller.CheckAppUpdate(false)
-	deadline := time.Now().Add(2 * time.Second)
-	for controller.Snapshot().Update.LastError == nil && time.Now().Before(deadline) {
-		time.Sleep(5 * time.Millisecond)
+	if err := controller.CheckAppUpdate(false); !errors.Is(err, errors.ErrUnsupported) {
+		t.Fatalf("unconfigured updates must report unsupported, got %v", err)
 	}
 	snapshot := controller.Snapshot().Update
-	if snapshot.LastError == nil || !strings.Contains(*snapshot.LastError, "test network failure") {
+	if snapshot.LastError == nil || !strings.Contains(*snapshot.LastError, "not configured") {
 		t.Fatalf("missing update error: %#v", snapshot.LastError)
 	}
 	if snapshot.LatestRelease == nil || snapshot.LatestRelease.TagName != previous.TagName {
@@ -748,11 +756,8 @@ func TestControllerUpdateFailureKeepsLastSuccessfulRelease(t *testing.T) {
 	}
 	select {
 	case request := <-requestSeen:
-		if request.Header.Get("Accept") != "application/vnd.github+json" || request.Header.Get("User-Agent") != "Codex-Tweaks/1.0.0" {
-			t.Fatalf("update headers changed: %#v", request.Header)
-		}
+		t.Fatalf("unconfigured updates contacted %s", request.URL)
 	default:
-		t.Fatal("update request was not sent")
 	}
 }
 

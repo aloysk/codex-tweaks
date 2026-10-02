@@ -2,10 +2,14 @@ package rpc
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/codex-tweaks/codex-tweaks/backend/internal/core"
 )
@@ -58,7 +62,7 @@ func TestServerInitializesControllerWithoutBackgroundSideEffects(t *testing.T) {
 	server := NewServerWithDependencies(
 		input,
 		&output,
-		core.ControllerDependencies{DisableBackground: true},
+		core.ControllerDependencies{DisableBackground: true, Platform: isolatedPlatform{}, CDP: &isolatedCDP{}},
 	)
 	if err := server.Serve(); err != nil {
 		t.Fatalf("serve: %v", err)
@@ -143,3 +147,118 @@ func quoted(value string) string {
 	data, _ := json.Marshal(value)
 	return string(data)
 }
+
+type failingWriter struct {
+	err   error
+	short bool
+	calls int
+}
+
+func (w *failingWriter) Write(data []byte) (int, error) {
+	w.calls++
+	if w.short {
+		return len(data) - 1, nil
+	}
+	return 0, w.err
+}
+
+func TestServerPropagatesOutputFailure(t *testing.T) {
+	for _, input := range []string{
+		"{\"id\":1,\"method\":\"ping\"}\n",
+		"not JSON\n",
+		"{\"id\":0,\"method\":\"ping\"}\n",
+		"{\"id\":1,\"method\":\"getState\"}\n",
+	} {
+		t.Run(input, func(t *testing.T) {
+			output := &failingWriter{err: io.ErrClosedPipe}
+			err := NewServer(strings.NewReader(input), output).Serve()
+			if !errors.Is(err, io.ErrClosedPipe) || output.calls != 1 {
+				t.Fatalf("error=%v, writes=%d", err, output.calls)
+			}
+		})
+	}
+}
+
+func TestServerRejectsShortOutputAndEncodingFailure(t *testing.T) {
+	output := &failingWriter{short: true}
+	server := NewServer(strings.NewReader(""), output)
+	if err := server.write(response{ID: 1, Result: true}); !errors.Is(err, io.ErrShortWrite) {
+		t.Fatalf("short write: %v", err)
+	}
+	if err := server.write(response{ID: 2, Result: true}); !errors.Is(err, io.ErrShortWrite) || output.calls != 1 {
+		t.Fatalf("failed output reused: error=%v, writes=%d", err, output.calls)
+	}
+	var buffer bytes.Buffer
+	server = NewServer(strings.NewReader(""), &buffer)
+	var unsupported *json.UnsupportedTypeError
+	if err := server.write(make(chan int)); !errors.As(err, &unsupported) || buffer.Len() != 0 {
+		t.Fatalf("encoding failure was lost: %v", err)
+	}
+}
+
+func TestServerEventFailureUnblocksClosableInput(t *testing.T) {
+	input, peer := io.Pipe()
+	defer input.Close()
+	defer peer.Close()
+	server := NewServer(input, &failingWriter{err: io.ErrClosedPipe})
+	finished := make(chan error, 1)
+	go func() { finished <- server.Serve() }()
+	if err := server.write(event{Event: "state", Data: true}); !errors.Is(err, io.ErrClosedPipe) {
+		t.Fatalf("event write: %v", err)
+	}
+	select {
+	case err := <-finished:
+		if !errors.Is(err, io.ErrClosedPipe) {
+			t.Fatalf("serve lost transport failure: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("failed event left the server blocked on input")
+	}
+}
+
+func TestRequestErrorsPreserveOutcomeCategories(t *testing.T) {
+	for _, item := range []struct {
+		err  error
+		code string
+	}{
+		{context.Canceled, "cancelled"},
+		{context.DeadlineExceeded, "timeout"},
+		{errors.ErrUnsupported, "unsupported"},
+		{errors.New("rejected"), "request_failed"},
+	} {
+		if got := requestErrorCode(item.err); got != item.code {
+			t.Fatalf("code=%s, want=%s", got, item.code)
+		}
+	}
+}
+
+// All initialized RPC fixtures are isolated from the installed official app.
+type isolatedPlatform struct{}
+
+func (isolatedPlatform) IsCodexRunning(context.Context) (bool, error) { return false, nil }
+func (isolatedPlatform) ObserveCodex(context.Context) (core.CodexObservation, error) {
+	return core.CodexObservation{}, nil
+}
+func (isolatedPlatform) ActivateCodex(context.Context) error { return errors.ErrUnsupported }
+func (isolatedPlatform) LaunchCodex(context.Context, core.CodexLaunchOptions) error {
+	return errors.ErrUnsupported
+}
+func (isolatedPlatform) RestartCodex(context.Context, core.CodexLaunchOptions) error {
+	return errors.ErrUnsupported
+}
+func (isolatedPlatform) Architecture() string { return "amd64" }
+
+type isolatedCDP struct{}
+
+func (*isolatedCDP) BindTarget(context.Context, *core.CodexProcessIdentity) error { return nil }
+func (*isolatedCDP) Inject(context.Context, core.Payload, int) (core.CDPInjectionResult, error) {
+	return core.CDPInjectionResult{}, errors.ErrUnsupported
+}
+func (*isolatedCDP) CleanupAllTargets(context.Context) (core.CDPCleanupResult, error) {
+	return core.CDPCleanupResult{}, nil
+}
+func (*isolatedCDP) ReloadAllTargets(context.Context) (core.CDPReloadResult, error) {
+	return core.CDPReloadResult{}, errors.ErrUnsupported
+}
+func (*isolatedCDP) SetNodeInvoker(core.NodeInvoker)     {}
+func (*isolatedCDP) EmitNodeEvent(core.NodeRuntimeEvent) {}

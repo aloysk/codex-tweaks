@@ -39,7 +39,7 @@ func TestPresentationContractOwnsCopyTokensPlatformAndActions(t *testing.T) {
 	if contract.Platform.RepositoryURL != UpdateRepositoryURL {
 		t.Fatalf("repository URL = %q, want %q", contract.Platform.RepositoryURL, UpdateRepositoryURL)
 	}
-	if !contract.Actions.RestartCodexUI || !contract.Actions.Reinject || !contract.Actions.InstallRemotePackage || !contract.Actions.ClearLog {
+	if contract.Actions.RestartCodexUI || !contract.Actions.Reinject || !contract.Actions.InstallRemotePackage || !contract.Actions.ClearLog {
 		t.Fatalf("expected connected actions to be available: %#v", contract.Actions)
 	}
 	if contract.LanguagePreference != string(LanguageSimplifiedChinese) || !contract.Actions.SetLanguage {
@@ -64,13 +64,13 @@ func TestPresentationContractAutomaticallyDetectsPreferredLanguage(t *testing.T)
 	}
 }
 
-func TestPresentationContractKeepsCodexUIRecoveryAvailableForRendererErrors(t *testing.T) {
+func TestPresentationContractRequiresManualOfficialUIRecovery(t *testing.T) {
 	errorMessage := "renderer did not respond"
 	available := NewPresentationContract(PresentationState{
 		Status: AppStatus{Kind: StatusError, Message: &errorMessage},
 	})
-	if !available.Actions.RestartCodexUI {
-		t.Fatalf("UI recovery must remain available for renderer errors: %#v", available.Actions)
+	if available.Actions.RestartCodexUI {
+		t.Fatalf("renderer errors cannot authorize automatic UI reload: %#v", available.Actions)
 	}
 
 	busy := NewPresentationContract(PresentationState{
@@ -133,7 +133,7 @@ func TestPresentationContractCanBeGeneratedForAnExplicitPlatform(t *testing.T) {
 	if contract.Platform.OperatingSystem != "windows" || contract.Platform.Architecture != "arm64" {
 		t.Fatalf("unexpected explicit platform: %#v", contract.Platform)
 	}
-	if contract.Platform.UpdateInstallStrategy != "velopack" || !contract.Actions.InstallAppUpdate {
+	if contract.Platform.UpdateInstallStrategy != "velopack" || contract.Actions.InstallAppUpdate || contract.Actions.CheckAppUpdate || contract.Actions.SetUpdatePreferences {
 		t.Fatalf("Windows update presentation is incomplete: %#v %#v", contract.Platform, contract.Actions)
 	}
 	if !contract.Actions.SetDisableGPUAcceleration {
@@ -147,11 +147,23 @@ func TestPresentationContractUsesSparkleForMacOSUpdates(t *testing.T) {
 		"darwin",
 		"arm64",
 	)
-	if contract.Platform.UpdateInstallStrategy != "sparkle" || !contract.Actions.InstallAppUpdate {
+	if contract.Platform.UpdateInstallStrategy != "sparkle" || contract.Actions.InstallAppUpdate || contract.Actions.CheckAppUpdate || contract.Actions.SetUpdatePreferences {
 		t.Fatalf("macOS update presentation is incomplete: %#v %#v", contract.Platform, contract.Actions)
 	}
 	if !contract.Actions.SetDisableGPUAcceleration {
 		t.Fatalf("macOS GPU compatibility action is unavailable: %#v", contract.Actions)
+	}
+}
+
+func TestPresentationContractDoesNotOfferUnsupportedMacEnhancedLaunch(t *testing.T) {
+	state := PresentationState{Status: AppStatus{Kind: StatusRestartRequired}, LanguagePreference: LanguageEnglish}
+	mac := NewPresentationContractForPlatform(state, "darwin", "arm64")
+	if mac.Actions.RestartCodex || !mac.Actions.OpenCodex || mac.Status.Detail != mac.Text["runtime.enhancementUnsupported"] {
+		t.Fatalf("unsupported enhancement must preserve ordinary launch and explain the limit: %#v", mac)
+	}
+	windows := NewPresentationContractForPlatform(state, "windows", "x64")
+	if !windows.Actions.RestartCodex || !windows.Actions.OpenCodex {
+		t.Fatal("verified Windows launch capability was disabled")
 	}
 }
 

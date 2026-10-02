@@ -131,7 +131,7 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception exception)
         {
-            App.Log($"Window chrome configuration fell back to defaults: {exception.Message}");
+            App.LogException("Window chrome configuration fell back to defaults", exception);
         }
     }
 
@@ -166,7 +166,7 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception exception)
         {
-            App.Log($"Backend startup failed: {exception}");
+            App.LogException("Backend startup failed", exception);
             _trayError = exception.Message;
             LoadingPanel.Visibility = Visibility.Collapsed;
             ShowError(exception.Message);
@@ -176,12 +176,17 @@ public sealed partial class MainWindow : Window
 
     private void MainWindow_Closing(AppWindow sender, AppWindowClosingEventArgs args)
     {
-        if (!_trayModeEnabled || _allowClose)
+        if (_allowClose)
         {
             return;
         }
 
         args.Cancel = true;
+        if (!_trayModeEnabled)
+        {
+            _ = CloseAfterShutdownAsync();
+            return;
+        }
         sender.Hide();
         App.Log("Main window hidden to the notification area.");
     }
@@ -246,8 +251,48 @@ public sealed partial class MainWindow : Window
 
     internal Task ShutdownAsync()
     {
-        return _shutdownTask ??= _backend.DisposeAsync().AsTask();
+        return _shutdownTask ??= ShutdownBackendAsync();
     }
+
+    private async Task CloseAfterShutdownAsync()
+    {
+        await ShutdownAsync();
+        CloseForExit();
+    }
+
+    private async Task ShutdownBackendAsync()
+    {
+        try
+        {
+            await _backend.DisposeAsync();
+        }
+        catch (Exception exception)
+        {
+            App.LogException("Page recovery was not confirmed on quit", exception);
+            ShowFromTray();
+            try
+            {
+                await new ContentDialog
+                {
+                    XamlRoot = RootGrid.XamlRoot,
+                    Title = Text(PresentationTextKey.StatusRecoveryPendingTitle),
+                    Content = Text(PresentationTextKey.AppBackendShutdownIncomplete),
+                    CloseButtonText = Text(PresentationTextKey.MenuQuit),
+                    DefaultButton = ContentDialogButton.Close,
+                }.ShowAsync();
+            }
+            catch (Exception dialogException)
+            {
+                App.LogException("Shutdown warning could not use XAML", dialogException);
+                _ = MessageBoxW(WindowNative.GetWindowHandle(this),
+                    Text(PresentationTextKey.AppBackendShutdownIncomplete),
+                    Text(PresentationTextKey.StatusRecoveryPendingTitle), 0x30);
+            }
+        }
+    }
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int MessageBoxW(IntPtr owner, string text, string caption, uint type);
 
     private void ShellNavigation_SelectionChanged(
         NavigationView sender,
@@ -386,7 +431,7 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception exception)
         {
-            App.Log($"Backend command {method} failed: {exception}");
+            App.LogException($"Backend command {method} failed", exception);
             if (showError)
             {
                 ShowError(exception.Message);
@@ -602,7 +647,7 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception exception)
         {
-            App.Log($"Copying the authoring prompt failed: {exception}");
+            App.LogException("Copying the authoring prompt failed", exception);
             if (showFeedback)
             {
                 ShowError(exception.Message);

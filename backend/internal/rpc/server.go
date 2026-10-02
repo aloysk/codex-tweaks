@@ -2,6 +2,7 @@ package rpc
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -37,6 +38,8 @@ type Server struct {
 	reader       io.Reader
 	writer       io.Writer
 	writeMu      sync.Mutex
+	writeError   error
+	abortOnce    sync.Once
 	controller   *core.Controller
 	dependencies core.ControllerDependencies
 }
@@ -55,36 +58,65 @@ func NewServerWithDependencies(
 	}
 }
 
-func (s *Server) Serve() error {
+func (s *Server) Serve() (serveError error) {
+	defer func() {
+		if s.controller != nil {
+			serveError = errors.Join(serveError, s.controller.Shutdown())
+		}
+	}()
 	scanner := bufio.NewScanner(s.reader)
 	scanner.Buffer(make([]byte, 64*1024), 4*1024*1024)
 	for scanner.Scan() {
+		if err := s.outputError(); err != nil {
+			return err
+		}
 		var incoming request
 		if err := json.Unmarshal(scanner.Bytes(), &incoming); err != nil {
-			s.write(response{Error: &rpcError{Code: "invalid_request", Message: err.Error()}})
+			if err := s.write(response{Error: &rpcError{Code: "invalid_request", Message: "Invalid JSON request"}}); err != nil {
+				return err
+			}
 			continue
 		}
 		if incoming.ID == 0 || incoming.Method == "" {
-			s.write(response{ID: incoming.ID, Error: &rpcError{Code: "invalid_request", Message: "id 和 method 不能为空"}})
+			if err := s.write(response{ID: incoming.ID, Error: &rpcError{Code: "invalid_request", Message: "id 和 method 不能为空"}}); err != nil {
+				return err
+			}
 			continue
 		}
 		result, err := s.dispatch(incoming)
 		if err != nil {
-			s.write(response{ID: incoming.ID, Error: &rpcError{Code: "request_failed", Message: err.Error()}})
+			if writeErr := s.write(response{ID: incoming.ID, Error: &rpcError{Code: requestErrorCode(err), Message: err.Error()}}); writeErr != nil {
+				return writeErr
+			}
 		} else {
-			s.write(response{ID: incoming.ID, Result: result})
+			if err := s.write(response{ID: incoming.ID, Result: result}); err != nil {
+				return err
+			}
 		}
 		if incoming.Method == "shutdown" {
 			return nil
 		}
 	}
+	if err := s.outputError(); err != nil {
+		return err
+	}
 	if err := scanner.Err(); err != nil {
 		return err
 	}
-	if s.controller != nil {
-		s.controller.Shutdown()
-	}
 	return nil
+}
+
+func requestErrorCode(err error) string {
+	switch {
+	case errors.Is(err, context.Canceled):
+		return "cancelled"
+	case errors.Is(err, context.DeadlineExceeded):
+		return "timeout"
+	case errors.Is(err, errors.ErrUnsupported):
+		return "unsupported"
+	default:
+		return "request_failed"
+	}
 }
 
 func (s *Server) dispatch(incoming request) (any, error) {
@@ -100,7 +132,8 @@ func (s *Server) dispatch(incoming request) (any, error) {
 			return nil, err
 		}
 		controller, err := core.NewController(params, func(snapshot core.AppSnapshot) {
-			s.write(event{Event: "state", Data: snapshot})
+			// write retains transport failure and closes a closable input to wake Serve.
+			_ = s.write(event{Event: "state", Data: snapshot})
 		}, s.dependencies)
 		if err != nil {
 			return nil, err
@@ -268,8 +301,7 @@ func (s *Server) dispatch(incoming request) (any, error) {
 	case "openCodex":
 		return accepted(c.OpenCodex())
 	case "restartCodex":
-		c.RestartCodex()
-		return accepted(nil)
+		return accepted(c.RestartCodex())
 	case "restartCodexUI":
 		return accepted(c.RestartCodexUI())
 	case "reinject":
@@ -289,8 +321,7 @@ func (s *Server) dispatch(incoming request) (any, error) {
 		if err := decodeParams(incoming.Params, &params); err != nil {
 			return nil, err
 		}
-		c.CheckAppUpdate(params.Prompt)
-		return accepted(nil)
+		return accepted(c.CheckAppUpdate(params.Prompt))
 	case "setUpdateChannel":
 		var params struct {
 			Channel core.UpdateChannel `json:"channel"`
@@ -329,8 +360,10 @@ func (s *Server) dispatch(incoming request) (any, error) {
 	case "unskipAndPromptUpdate":
 		return accepted(c.UnskipAndPromptUpdate())
 	case "shutdown":
-		c.Shutdown()
-		return map[string]bool{"shutdown": true}, nil
+		if err := c.Shutdown(); err != nil {
+			return nil, err
+		}
+		return core.ShutdownResult{Shutdown: true}, nil
 	default:
 		return nil, fmt.Errorf("未知方法：%s", incoming.Method)
 	}
@@ -354,12 +387,39 @@ func accepted(err error) (any, error) {
 	return map[string]bool{"accepted": true}, nil
 }
 
-func (s *Server) write(value any) {
+func (s *Server) write(value any) error {
+	s.writeMu.Lock()
+	if s.writeError != nil {
+		err := s.writeError
+		s.writeMu.Unlock()
+		return err
+	}
+	data, err := json.Marshal(value)
+	if err == nil {
+		frame := append(data, '\n')
+		var written int
+		written, err = s.writer.Write(frame)
+		if err == nil && written != len(frame) {
+			err = io.ErrShortWrite
+		}
+	}
+	if err != nil {
+		s.writeError = fmt.Errorf("RPC output failed: %w", err)
+	}
+	err = s.writeError
+	s.writeMu.Unlock()
+	if err != nil {
+		s.abortOnce.Do(func() {
+			if input, ok := s.reader.(io.Closer); ok {
+				_ = input.Close()
+			}
+		})
+	}
+	return err
+}
+
+func (s *Server) outputError() error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	data, err := json.Marshal(value)
-	if err != nil {
-		return
-	}
-	_, _ = s.writer.Write(append(data, '\n'))
+	return s.writeError
 }

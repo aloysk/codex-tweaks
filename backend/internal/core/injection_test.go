@@ -30,7 +30,7 @@ func TestInjectionRuntimeAndForceContracts(t *testing.T) {
 			t.Fatalf("script missing %q", expected)
 		}
 	}
-	if !strings.Contains(CleanupScript, "delete globalThis[key]") || !strings.Contains(CleanupScript, "codex-tweaks-root") {
+	if !strings.Contains(CleanupScript, "runtime.owner !== owner") || !strings.Contains(CleanupScript, "codex-tweaks-root") {
 		t.Fatal("cleanup contract changed")
 	}
 }
@@ -96,7 +96,7 @@ func TestInjectionExposesTypedNodeAndSettingsExtensions(t *testing.T) {
 		"settingsAdapter?.cleanup?.()",
 		"nodePendingLimit = 64",
 		"settingsAdapterReady",
-		"try {\n      const context = {",
+		"const context = {",
 	} {
 		if !strings.Contains(script, expected) {
 			t.Fatalf("renderer extension injection script missing %q", expected)

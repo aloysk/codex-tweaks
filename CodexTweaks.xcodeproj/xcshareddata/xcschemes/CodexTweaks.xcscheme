@@ -16,7 +16,7 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "9BFD67925F8886E0CFE2428A"
-               BuildableName = "Codex Tweaks.app"
+               BuildableName = "Codex Tweaks Companion.app"
                BlueprintName = "CodexTweaks"
                ReferencedContainer = "container:CodexTweaks.xcodeproj">
             </BuildableReference>
@@ -34,7 +34,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "9BFD67925F8886E0CFE2428A"
-            BuildableName = "Codex Tweaks.app"
+            BuildableName = "Codex Tweaks Companion.app"
             BlueprintName = "CodexTweaks"
             ReferencedContainer = "container:CodexTweaks.xcodeproj">
          </BuildableReference>
@@ -81,7 +81,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "9BFD67925F8886E0CFE2428A"
-            BuildableName = "Codex Tweaks.app"
+            BuildableName = "Codex Tweaks Companion.app"
             BlueprintName = "CodexTweaks"
             ReferencedContainer = "container:CodexTweaks.xcodeproj">
          </BuildableReference>
@@ -100,7 +100,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "9BFD67925F8886E0CFE2428A"
-            BuildableName = "Codex Tweaks.app"
+            BuildableName = "Codex Tweaks Companion.app"
             BlueprintName = "CodexTweaks"
             ReferencedContainer = "container:CodexTweaks.xcodeproj">
          </BuildableReference>

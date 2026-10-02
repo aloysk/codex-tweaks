@@ -1,15 +1,26 @@
 package core
 
 import (
+	"errors"
+	"fmt"
 	"strings"
 	"time"
 )
 
-func (c *Controller) CheckAppUpdate(prompt bool) {
+func (c *Controller) CheckAppUpdate(prompt bool) error {
+	if !ApplicationUpdatesEnabled {
+		err := c.applicationUpdatesUnavailable()
+		c.mu.Lock()
+		message := err.Error()
+		c.updateLastError = &message
+		c.mu.Unlock()
+		c.emit()
+		return err
+	}
 	c.mu.Lock()
 	if c.updateChecking {
 		c.mu.Unlock()
-		return
+		return nil
 	}
 	c.updateChecking = true
 	c.updateLastError = nil
@@ -34,7 +45,8 @@ func (c *Controller) CheckAppUpdate(prompt bool) {
 		}
 		c.latestRelease = release
 		now := NewCodableTime(time.Now())
-		c.config.UpdateLastCheckAt = &now
+		next := c.config
+		next.UpdateLastCheckAt = &now
 		if release != nil {
 			hasNewer := HasNewerVersion(release, c.currentVersion)
 			skipped := containsString(c.config.UpdateSkippedVersions, NormalizeVersion(release.TagName))
@@ -47,16 +59,24 @@ func (c *Controller) CheckAppUpdate(prompt bool) {
 		} else {
 			c.pendingUpdate = nil
 		}
-		persistErr := c.persistConfigurationLocked()
+		persistErr := c.persistConfigurationCandidateLocked(next)
 		c.mu.Unlock()
 		if persistErr != nil {
 			c.logger.Error("保存更新状态失败：" + persistErr.Error())
 		}
 		c.emit()
 	}()
+	return nil
+}
+
+func (c *Controller) applicationUpdatesUnavailable() error {
+	return fmt.Errorf("%w: %s", errors.ErrUnsupported, c.presentationText()["update.notConfigured"])
 }
 
 func (c *Controller) SetUpdateChannel(channel UpdateChannel) error {
+	if !ApplicationUpdatesEnabled {
+		return c.applicationUpdatesUnavailable()
+	}
 	if channel != UpdateBeta {
 		channel = UpdateStable
 	}
@@ -65,23 +85,34 @@ func (c *Controller) SetUpdateChannel(channel UpdateChannel) error {
 		c.mu.Unlock()
 		return nil
 	}
-	c.config.UpdateChannel = channel
+	next := c.config
+	next.UpdateChannel = channel
+	if err := c.persistConfigurationCandidateLocked(next); err != nil {
+		c.mu.Unlock()
+		return err
+	}
 	c.latestRelease = nil
 	c.pendingUpdate = nil
 	c.updateLastError = nil
-	err := c.persistConfigurationLocked()
 	c.mu.Unlock()
 	c.emit()
-	return err
+	return nil
 }
 
 func (c *Controller) SetUpdateAutoCheck(enabled bool) error {
+	if enabled && !ApplicationUpdatesEnabled {
+		return c.applicationUpdatesUnavailable()
+	}
 	c.mu.Lock()
-	c.config.UpdateAutoCheck = enabled
-	err := c.persistConfigurationLocked()
+	next := c.config
+	next.UpdateAutoCheck = enabled
+	err := c.persistConfigurationCandidateLocked(next)
 	c.mu.Unlock()
+	if err != nil {
+		return err
+	}
 	c.emit()
-	return err
+	return nil
 }
 
 func (c *Controller) DismissUpdate() {
@@ -94,15 +125,19 @@ func (c *Controller) DismissUpdate() {
 func (c *Controller) SkipUpdate(tagName string) error {
 	version := NormalizeVersion(tagName)
 	c.mu.Lock()
-	if !containsString(c.config.UpdateSkippedVersions, version) {
-		c.config.UpdateSkippedVersions = append(c.config.UpdateSkippedVersions, version)
-		c.config.UpdateSkippedVersions = uniqueSorted(c.config.UpdateSkippedVersions)
+	next := c.config
+	if !containsString(next.UpdateSkippedVersions, version) {
+		next.UpdateSkippedVersions = append(append([]string(nil), next.UpdateSkippedVersions...), version)
+		next.UpdateSkippedVersions = uniqueSorted(next.UpdateSkippedVersions)
+	}
+	if err := c.persistConfigurationCandidateLocked(next); err != nil {
+		c.mu.Unlock()
+		return err
 	}
 	c.pendingUpdate = nil
-	err := c.persistConfigurationLocked()
 	c.mu.Unlock()
 	c.emit()
-	return err
+	return nil
 }
 
 func (c *Controller) UnskipAndPromptUpdate() error {
@@ -118,11 +153,15 @@ func (c *Controller) UnskipAndPromptUpdate() error {
 			filtered = append(filtered, skipped)
 		}
 	}
-	c.config.UpdateSkippedVersions = filtered
+	next := c.config
+	next.UpdateSkippedVersions = filtered
+	if err := c.persistConfigurationCandidateLocked(next); err != nil {
+		c.mu.Unlock()
+		return err
+	}
 	copy := *c.latestRelease
 	c.pendingUpdate = &copy
-	err := c.persistConfigurationLocked()
 	c.mu.Unlock()
 	c.emit()
-	return err
+	return nil
 }

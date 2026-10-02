@@ -11,7 +11,7 @@ namespace CodexTweaks.Windows.Services;
 
 internal sealed class BackendClient : IAsyncDisposable
 {
-    internal const int ProtocolVersion = 10;
+    internal const int ProtocolVersion = BackendProtocolContract.ProtocolVersion;
     private static readonly Encoding Utf8NoBom = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
 
     private readonly ConcurrentDictionary<long, TaskCompletionSource<JsonElement>> _pending = new();
@@ -25,19 +25,25 @@ internal sealed class BackendClient : IAsyncDisposable
     private long _nextId;
     private Task? _stdoutTask;
     private Task? _stderrTask;
-    private bool _stopping;
+    private volatile bool _stopping;
+    private readonly object _disposeGate = new();
+    private Task? _disposeTask;
 
     internal event Action<BackendAppSnapshot>? SnapshotChanged;
     internal event Action<string>? BackendFailed;
 
     internal async Task<BackendAppSnapshot> StartAsync()
     {
+        if (_stopping)
+        {
+            throw new ObjectDisposedException(nameof(BackendClient));
+        }
         if (_process is not null)
         {
             return await RequestAsync<BackendAppSnapshot>("getState", null);
         }
 
-        var executable = Environment.GetEnvironmentVariable("CODEX_TWEAKS_BACKEND_PATH");
+        var executable = Environment.GetEnvironmentVariable(ApplicationIdentity.EnvironmentPrefix + "BACKEND_PATH");
         if (string.IsNullOrWhiteSpace(executable))
         {
             executable = Path.Combine(AppContext.BaseDirectory, "codex-tweaks-backend.exe");
@@ -75,6 +81,26 @@ internal sealed class BackendClient : IAsyncDisposable
         _stdoutTask = ReadStdoutAsync(_process);
         _stderrTask = ReadStderrAsync(_process);
 
+        try
+        {
+            return await InitializeBackendAsync();
+        }
+        catch
+        {
+            try
+            {
+                await DisposeAsync();
+            }
+            catch (Exception exception)
+            {
+                App.LogException("Failed startup cleanup was not confirmed", exception);
+            }
+            throw;
+        }
+    }
+
+    private async Task<BackendAppSnapshot> InitializeBackendAsync()
+    {
         var ping = await RequestAsync<BackendPing>("ping", null);
         if (ping.ProtocolVersion != ProtocolVersion || ping.Backend != "go")
         {
@@ -83,8 +109,8 @@ internal sealed class BackendClient : IAsyncDisposable
         }
 
         var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        var applicationSupport = Environment.GetEnvironmentVariable("CODEX_TWEAKS_APPLICATION_SUPPORT") ?? local;
-        var cache = Environment.GetEnvironmentVariable("CODEX_TWEAKS_CACHE_DIRECTORY") ?? local;
+        var applicationSupport = Environment.GetEnvironmentVariable(ApplicationIdentity.EnvironmentPrefix + "APPLICATION_SUPPORT") ?? local;
+        var cache = Environment.GetEnvironmentVariable(ApplicationIdentity.EnvironmentPrefix + "CACHE_DIRECTORY") ?? local;
         var informational = Assembly.GetExecutingAssembly()
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
         var version = informational?.Split('+')[0] ?? "0.0.0-dev";
@@ -134,7 +160,7 @@ internal sealed class BackendClient : IAsyncDisposable
         }
     }
 
-    internal async Task<T> RequestAsync<T>(string method, object? parameters)
+    internal async Task<T> RequestAsync<T>(string method, object? parameters, TimeSpan? timeout = null)
     {
         var process = _process ?? throw new InvalidOperationException(
             PresentationFallback.Text(PresentationTextKey.AppBackendNotRunning));
@@ -148,19 +174,20 @@ internal sealed class BackendClient : IAsyncDisposable
 
         try
         {
+            using var deadline = new CancellationTokenSource(timeout ?? TimeSpan.FromMinutes(3));
             var payload = JsonSerializer.Serialize(new { id, method, @params = parameters }, _json);
-            await _writeLock.WaitAsync();
+            await _writeLock.WaitAsync(deadline.Token);
             try
             {
-                await process.StandardInput.WriteLineAsync(payload);
-                await process.StandardInput.FlushAsync();
+                await process.StandardInput.WriteLineAsync(payload.AsMemory(), deadline.Token);
+                await process.StandardInput.FlushAsync(deadline.Token);
             }
             finally
             {
                 _writeLock.Release();
             }
 
-            var result = await completion.Task.WaitAsync(TimeSpan.FromMinutes(3));
+            var result = await completion.Task.WaitAsync(deadline.Token);
             if (typeof(T) == typeof(JsonElement))
             {
                 return (T)(object)result;
@@ -228,16 +255,32 @@ internal sealed class BackendClient : IAsyncDisposable
         }
         catch (Exception exception)
         {
-            App.Log($"Backend stdout failed: {exception}");
+            App.LogException("Backend stdout failed", exception);
             FailPending(exception);
         }
     }
 
     private static async Task ReadStderrAsync(Process process)
     {
-        while (await process.StandardError.ReadLineAsync() is { } line)
+        // Drain untrusted diagnostics in fixed chunks. A newline-free stream
+        // must not accumulate in memory or expose external output in our log.
+        var buffer = new char[4096];
+        long characters = 0;
+        try
         {
-            Debug.WriteLine($"[go-backend] {line}");
+            int count;
+            while ((count = await process.StandardError.ReadAsync(buffer.AsMemory())) != 0)
+            {
+                characters += count;
+            }
+        }
+        catch (Exception exception)
+        {
+            App.LogException("Backend stderr drain failed", exception);
+        }
+        if (characters != 0)
+        {
+            App.Log($"Backend diagnostics received: {characters} characters.");
         }
     }
 
@@ -263,7 +306,16 @@ internal sealed class BackendClient : IAsyncDisposable
         }
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
+    {
+        lock (_disposeGate)
+        {
+            _stopping = true;
+            return new ValueTask(_disposeTask ??= DisposeCoreAsync());
+        }
+    }
+
+    private async Task DisposeCoreAsync()
     {
         var process = _process;
         if (process is null)
@@ -271,31 +323,68 @@ internal sealed class BackendClient : IAsyncDisposable
             return;
         }
         _stopping = true;
+        var startedAt = Stopwatch.GetTimestamp();
+        var grace = TimeSpan.FromSeconds(BackendProtocolContract.ShutdownGraceSeconds);
+        var cleanupConfirmed = false;
+        var forced = false;
         try
         {
             if (!process.HasExited)
             {
-                await RequestAsync<JsonElement>("shutdown", null).WaitAsync(TimeSpan.FromSeconds(2));
+                var result = await RequestAsync<ShutdownResult>("shutdown", null, grace);
+                cleanupConfirmed = result.Shutdown;
             }
         }
-        catch
+        catch (Exception exception)
         {
-            // The sidecar is private to this frontend and can be terminated on close.
+            App.LogException("Backend cleanup was not confirmed", exception);
+        }
+        try
+        {
+            process.StandardInput.Close();
+            var remaining = grace - Stopwatch.GetElapsedTime(startedAt);
+            if (!process.HasExited && remaining > TimeSpan.Zero)
+            {
+                using var deadline = new CancellationTokenSource(remaining);
+                await process.WaitForExitAsync(deadline.Token);
+            }
+        }
+        catch (Exception exception)
+        {
+            App.LogException("Backend did not exit within its shutdown budget", exception);
         }
         _process = null;
+        FailPending(new InvalidOperationException(PresentationFallback.Text(PresentationTextKey.AppBackendNotRunning)));
         if (!process.HasExited)
         {
-            process.Kill(entireProcessTree: true);
+            forced = true;
+            // The official application may have been launched by this sidecar;
+            // terminating a descendant tree would close user-owned work.
+            try
+            {
+                process.Kill(entireProcessTree: false);
+                App.Log("Private backend terminated after its shutdown budget.");
+            }
+            catch (Exception exception)
+            {
+                App.LogException("Private backend termination failed", exception);
+            }
         }
-        if (_stdoutTask is not null)
+        try
         {
-            await _stdoutTask.ConfigureAwait(false);
+            await Task.WhenAll(_stdoutTask ?? Task.CompletedTask, _stderrTask ?? Task.CompletedTask)
+                .WaitAsync(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
         }
-        if (_stderrTask is not null)
+        catch (Exception exception)
         {
-            await _stderrTask.ConfigureAwait(false);
+            App.LogException("Backend output drain was not confirmed", exception);
         }
+        var exitedCleanly = process.HasExited && process.ExitCode == 0;
         process.Dispose();
         _writeLock.Dispose();
+        if (!cleanupConfirmed || !exitedCleanly || forced)
+        {
+            throw new InvalidOperationException(PresentationFallback.Text(PresentationTextKey.AppBackendShutdownIncomplete));
+        }
     }
 }

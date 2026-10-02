@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -18,6 +19,8 @@ import (
 var (
 	ErrCDPEndpointUnavailable = errors.New("Codex 未开启本地 CDP 端口")
 	ErrNoCodexUITargets       = errors.New("没有发现可重启的 Codex 界面")
+	ErrRendererReloadUnsafe   = errors.New("请保存工作并从官方 Codex 正常退出；增强工具不会重载正在使用的页面")
+	ErrRendererOwnership      = errors.New("页面已有其他增强运行时，请先退出该增强并正常重开 Codex")
 )
 
 const targetDOMReadyProbeScript = `(() => ({
@@ -33,11 +36,12 @@ type CDPTarget struct {
 }
 
 func (t CDPTarget) Injectable() bool {
-	if t.Type != "page" || !strings.HasPrefix(strings.ToLower(t.URL), "app://") || t.WebSocketDebuggerURL == nil {
+	page, err := url.Parse(t.URL)
+	if err != nil || t.ID == "" || t.Type != "page" || page.Scheme != "app" || page.Host != "-" || page.Path != "/index.html" || page.User != nil || t.WebSocketDebuggerURL == nil {
 		return false
 	}
 	parsed, err := url.Parse(*t.WebSocketDebuggerURL)
-	return err == nil && (parsed.Scheme == "ws" || parsed.Scheme == "wss") && parsed.Host != ""
+	return err == nil && parsed.Scheme == "ws" && parsed.Hostname() == "127.0.0.1" && parsed.Port() != "" && parsed.User == nil && parsed.Path == "/devtools/page/"+t.ID && parsed.RawQuery == "" && parsed.Fragment == ""
 }
 
 func InjectableTargets(data []byte) ([]CDPTarget, error) {
@@ -58,6 +62,7 @@ type CDPInjectionResult struct {
 	TargetCount   int               `json:"targetCount"`
 	SuccessCount  int               `json:"successCount"`
 	PackageErrors map[string]string `json:"packageErrors"`
+	TargetErrors  map[string]string `json:"targetErrors"`
 }
 
 func (r CDPInjectionResult) FailureCount() int { return r.TargetCount - r.SuccessCount }
@@ -69,30 +74,137 @@ type CDPReloadResult struct {
 
 func (r CDPReloadResult) FailureCount() int { return r.TargetCount - r.SuccessCount }
 
-type CDPService struct {
-	Endpoint      string
-	AllowedOrigin string
-	httpClient    *http.Client
-	dialer        *websocket.Dialer
-	logger        *Logger
-	mu            sync.Mutex
-	nextCommandID int
-	nodeInvoker   NodeInvoker
-	sessions      map[string]*rendererBridgeSession
+type CDPCleanupTargetResult struct {
+	TargetID string `json:"targetID"`
+	Status   string `json:"status"`
+	Error    string `json:"error,omitempty"`
 }
 
-func NewCDPService(logger *Logger) *CDPService {
+type CDPCleanupResult struct {
+	TargetCount  int                      `json:"targetCount"`
+	SuccessCount int                      `json:"successCount"`
+	Targets      []CDPCleanupTargetResult `json:"targets"`
+}
+
+func (r CDPCleanupResult) Complete() bool { return r.TargetCount == r.SuccessCount }
+
+type TargetIdentityVerifier func(context.Context, CodexProcessIdentity) error
+type attemptedCDPTarget struct {
+	target   CDPTarget
+	identity CodexProcessIdentity
+}
+
+type CDPService struct {
+	Endpoint         string
+	AllowedOrigin    string
+	httpClient       *http.Client
+	dialer           *websocket.Dialer
+	logger           *Logger
+	mu               sync.Mutex
+	nextCommandID    int
+	nodeInvoker      NodeInvoker
+	sessions         map[string]*rendererBridgeSession
+	verifyIdentity   TargetIdentityVerifier
+	boundTarget      *CodexProcessIdentity
+	attemptedTargets map[string]attemptedCDPTarget
+	owner            string
+	epoch            uint64
+	stopped          bool
+}
+
+func NewCDPService(logger *Logger, verifier ...TargetIdentityVerifier) *CDPService {
+	owner, err := randomHex(24)
+	if err != nil {
+		owner = ""
+	} else {
+		owner = ApplicationBundleIdentifier + ":" + owner
+	}
+	var verify TargetIdentityVerifier
+	if len(verifier) > 0 {
+		verify = verifier[0]
+	}
 	return &CDPService{
 		Endpoint: CodexCDPTargetsURL, AllowedOrigin: CodexCDPOrigin,
-		httpClient: &http.Client{Timeout: 5 * time.Second},
-		dialer:     &websocket.Dialer{HandshakeTimeout: 5 * time.Second, Proxy: http.ProxyFromEnvironment},
+		httpClient: &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{Proxy: nil}, CheckRedirect: func(*http.Request, []*http.Request) error { return errors.New("CDP redirects are forbidden") }},
+		dialer:     &websocket.Dialer{HandshakeTimeout: 5 * time.Second, Proxy: nil},
 		logger:     logger, nextCommandID: 1,
-		sessions: map[string]*rendererBridgeSession{},
+		sessions:       map[string]*rendererBridgeSession{},
+		verifyIdentity: verify, attemptedTargets: map[string]attemptedCDPTarget{}, owner: owner,
 	}
 }
 
+func lockWithContext(ctx context.Context, mutex *sync.Mutex) error {
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if mutex.TryLock() {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+}
+
+func (s *CDPService) BindTarget(ctx context.Context, identity *CodexProcessIdentity) error {
+	if err := lockWithContext(ctx, &s.mu); err != nil {
+		return err
+	}
+	defer s.mu.Unlock()
+	if identity == nil {
+		s.boundTarget = nil
+		s.stopped = true
+		s.closeAllRendererSessionsLocked()
+		return nil
+	}
+	if !identity.Valid() || s.verifyIdentity == nil || s.owner == "" {
+		return ErrCodexIdentityUnverified
+	}
+	if err := s.verifyIdentity(ctx, *identity); err != nil {
+		return err
+	}
+	if s.stopped || s.boundTarget == nil || !s.boundTarget.Equal(*identity) {
+		s.closeAllRendererSessionsLocked()
+		s.epoch++
+		s.stopped = false
+	}
+	copy := *identity
+	s.boundTarget = &copy
+	return nil
+}
+
+func (s *CDPService) verifyBoundTarget(ctx context.Context) error {
+	if s.boundTarget == nil || s.verifyIdentity == nil || !s.boundTarget.Valid() {
+		return ErrCodexIdentityUnverified
+	}
+	return s.verifyIdentity(ctx, *s.boundTarget)
+}
+
+func (s *CDPService) debuggerAuthority(debuggerURL string) error {
+	endpoint, err := url.Parse(s.Endpoint)
+	if err != nil || endpoint.Scheme != "http" || endpoint.Hostname() != "127.0.0.1" || endpoint.Port() == "" || endpoint.User != nil || endpoint.Path != "/json/list" || endpoint.RawQuery != "" || endpoint.Fragment != "" {
+		return ErrCodexIdentityUnverified
+	}
+	if s.AllowedOrigin != endpoint.Scheme+"://"+endpoint.Host {
+		return ErrCodexIdentityUnverified
+	}
+	if debuggerURL == "" {
+		return nil
+	}
+	debugger, err := url.Parse(debuggerURL)
+	if err != nil || debugger.Scheme != "ws" || debugger.Host != endpoint.Host || debugger.User != nil || debugger.RawQuery != "" || debugger.Fragment != "" || !strings.HasPrefix(debugger.Path, "/devtools/page/") {
+		return ErrCodexIdentityUnverified
+	}
+	return nil
+}
+
 func (s *CDPService) Inject(ctx context.Context, payload Payload, forceGeneration int) (CDPInjectionResult, error) {
-	s.mu.Lock()
+	if err := lockWithContext(ctx, &s.mu); err != nil {
+		return CDPInjectionResult{}, err
+	}
 	defer s.mu.Unlock()
 	targets, err := s.discoverTargets(ctx)
 	if err != nil {
@@ -100,43 +212,88 @@ func (s *CDPService) Inject(ctx context.Context, payload Payload, forceGeneratio
 		return CDPInjectionResult{}, err
 	}
 	s.reconcileRendererSessionsLocked(targets)
-	result := CDPInjectionResult{PackageErrors: map[string]string{}}
+	result := CDPInjectionResult{PackageErrors: map[string]string{}, TargetErrors: map[string]string{}}
+	var failures []error
+	fail := func(targetID string, err error) {
+		result.TargetErrors[targetID] = err.Error()
+		failures = append(failures, fmt.Errorf("target %s: %w", targetID, err))
+	}
 	for _, target := range targets {
 		ready, err := s.targetDOMReady(ctx, *target.WebSocketDebuggerURL)
 		if err != nil {
-			s.logError(fmt.Sprintf("目标 %s 页面就绪检查失败：%v", target.ID, err))
+			s.logError(fmt.Sprintf("页面就绪检查失败：target=%s class=%s", target.ID, diagnosticErrorClass(err)))
+			result.TargetCount++
+			fail(target.ID, err)
 			continue
 		}
 		if !ready {
 			continue
 		}
 		result.TargetCount++
-		bridgeSessionID, nodeTokens, settingsAdapter, err := s.rendererBridgeForTargetLocked(ctx, target, payload)
+		s.trackAttempt(target)
+		lease, err := s.evaluate(ctx, runtimeLeaseClaimScript(s.owner, s.epoch), *target.WebSocketDebuggerURL)
 		if err != nil {
-			s.logError(fmt.Sprintf("目标 %s 无法建立能力通道：%v", target.ID, err))
+			fail(target.ID, err)
 			continue
 		}
-		probe := injectionRuntimeProbeScript(
-			payload, forceGeneration, bridgeSessionID, settingsAdapter,
+		if lease["status"] != "claimed" {
+			fail(target.ID, ErrRendererOwnership)
+			continue
+		}
+		bridgeSessionID, nodeTokens, settingsAdapter, err := s.rendererBridgeForTargetLocked(ctx, target, payload)
+		if err != nil {
+			s.logError(fmt.Sprintf("能力通道建立失败：target=%s class=%s", target.ID, diagnosticErrorClass(err)))
+			fail(target.ID, err)
+			continue
+		}
+		probe := injectionRuntimeProbeScriptOwned(
+			payload, forceGeneration, bridgeSessionID, settingsAdapter, s.owner, s.epoch,
 		)
 		value, probeErr := s.evaluate(ctx, probe, *target.WebSocketDebuggerURL)
+		if probeErr != nil {
+			fail(target.ID, probeErr)
+			continue
+		}
+		if value["status"] == "foreign" {
+			fail(target.ID, ErrRendererOwnership)
+			continue
+		}
 		if probeErr == nil && value["status"] == "unchanged" {
+			s.trackAttempt(target)
 			result.SuccessCount++
 			mergeInjectionPackageErrors(result.PackageErrors, value)
 			s.logSettingsAdapterRuntimeError(target.ID, value)
 			continue
 		}
-		script := injectionScriptWithRendererBridge(payload, forceGeneration, bridgeSessionID, nodeTokens, settingsAdapter)
+		if value["status"] != "stale" {
+			fail(target.ID, errors.New("invalid renderer runtime probe"))
+			continue
+		}
+		// An evaluation timeout does not prove that JavaScript made no changes.
+		// Track the attempt before dispatch so a later stop includes this target.
+		s.trackAttempt(target)
+		script := injectionScriptOwned(payload, forceGeneration, bridgeSessionID, nodeTokens, settingsAdapter, s.owner, s.epoch)
 		value, err = s.evaluate(ctx, script, *target.WebSocketDebuggerURL)
 		if err != nil {
-			s.logError(fmt.Sprintf("目标 %s 注入失败：%v", target.ID, err))
+			s.logError(fmt.Sprintf("页面注入失败：target=%s class=%s", target.ID, diagnosticErrorClass(err)))
+			fail(target.ID, err)
+			continue
+		}
+		if value["status"] != "injected" && value["status"] != "unchanged" {
+			fail(target.ID, errors.New("renderer did not confirm injection"))
 			continue
 		}
 		result.SuccessCount++
 		mergeInjectionPackageErrors(result.PackageErrors, value)
 		s.logSettingsAdapterRuntimeError(target.ID, value)
 	}
-	return result, nil
+	return result, errors.Join(failures...)
+}
+
+func (s *CDPService) trackAttempt(target CDPTarget) {
+	identity := *s.boundTarget
+	key := SecureFingerprintStrings(JSONLiteral(identity), target.ID, *target.WebSocketDebuggerURL)
+	s.attemptedTargets[key] = attemptedCDPTarget{target: target, identity: identity}
 }
 
 func (s *CDPService) logSettingsAdapterRuntimeError(targetID string, value map[string]any) {
@@ -150,7 +307,7 @@ func (s *CDPService) logSettingsAdapterRuntimeError(targetID string, value map[s
 	}
 	session.settingsAdapterRuntimeError = message
 	if message != "" {
-		s.logError("目标 " + targetID + " 的 Codex 设置适配失败：" + message)
+		s.logError("Codex 设置适配失败：target=" + targetID + " class=renderer")
 	}
 }
 
@@ -175,76 +332,75 @@ func mergeInjectionPackageErrors(destination map[string]string, value map[string
 	}
 }
 
-func (s *CDPService) CleanupAllTargets(ctx context.Context) error {
-	s.mu.Lock()
+func (s *CDPService) CleanupAllTargets(ctx context.Context) (CDPCleanupResult, error) {
+	result := CDPCleanupResult{Targets: []CDPCleanupTargetResult{}}
+	if err := lockWithContext(ctx, &s.mu); err != nil {
+		return result, err
+	}
 	defer s.mu.Unlock()
 	defer s.closeAllRendererSessionsLocked()
-	targets, err := s.discoverTargets(ctx)
-	if err != nil {
-		return err
-	}
-	for _, target := range targets {
-		if _, err := s.evaluate(ctx, CleanupScript, *target.WebSocketDebuggerURL); err != nil {
-			s.logError(fmt.Sprintf("目标 %s 清理失败：%v", target.ID, err))
+	s.stopped = true
+	originalBinding := s.boundTarget
+	defer func() { s.boundTarget = originalBinding }()
+	result.TargetCount = len(s.attemptedTargets)
+	var failures []error
+	for attemptKey, attempted := range s.attemptedTargets {
+		targetID := attempted.target.ID
+		item := CDPCleanupTargetResult{TargetID: targetID, Status: "pending"}
+		var err error
+		if s.verifyIdentity == nil {
+			err = ErrCodexIdentityUnverified
+		} else if err = s.verifyIdentity(ctx, attempted.identity); errors.Is(err, ErrCodexTargetExited) {
+			err = nil
+			item.Status = "exited"
+		} else if err == nil {
+			identity := attempted.identity
+			s.boundTarget = &identity
+			var value map[string]any
+			value, err = s.evaluate(ctx, cleanupScriptOwned(s.owner, s.epoch), *attempted.target.WebSocketDebuggerURL)
+			if err == nil && value["status"] != "cleaned" {
+				err = fmt.Errorf("renderer cleanup not confirmed: %s", JSONLiteral(value))
+			}
 		}
+		if err == nil {
+			if item.Status == "pending" {
+				item.Status = "cleaned"
+			}
+			result.SuccessCount++
+			delete(s.attemptedTargets, attemptKey)
+		} else {
+			item.Error = err.Error()
+			failures = append(failures, fmt.Errorf("target %s cleanup: %w", targetID, err))
+			s.logError(fmt.Sprintf("页面清理失败：target=%s failed=1 class=%s", targetID, diagnosticErrorClass(err)))
+		}
+		result.Targets = append(result.Targets, item)
 	}
-	return nil
+	return result, errors.Join(failures...)
 }
 
 func (s *CDPService) ReloadAllTargets(ctx context.Context) (CDPReloadResult, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	targets, err := s.discoverTargets(ctx)
-	if err != nil {
-		return CDPReloadResult{}, err
-	}
-	result := CDPReloadResult{TargetCount: len(targets)}
-	if len(targets) == 0 {
-		return result, ErrNoCodexUITargets
-	}
-
-	// Reloading invalidates every bridge token and page-scoped binding. Close the
-	// old sessions before navigation so no stale Renderer bridge token survives.
-	s.closeAllRendererSessionsLocked()
-	var firstError error
-	for _, target := range targets {
-		debuggerURL := *target.WebSocketDebuggerURL
-		// An injected package can pin the renderer in a long-running JavaScript
-		// task. Best-effort termination gives Page.reload a chance to run without
-		// making it a prerequisite for Chromium versions that reject the command.
-		_, _ = s.execute(ctx, "Runtime.terminateExecution", map[string]any{}, debuggerURL)
-		if _, err := s.execute(
-			ctx,
-			"Page.reload",
-			map[string]any{"ignoreCache": true},
-			debuggerURL,
-		); err != nil {
-			s.logError(fmt.Sprintf("目标 %s 界面重启失败：%v", target.ID, err))
-			if firstError == nil {
-				firstError = err
-			}
-			continue
-		}
-		result.SuccessCount++
-	}
-	if firstError != nil {
-		return result, fmt.Errorf(
-			"Codex 界面重启不完整（成功 %d/%d）：%w",
-			result.SuccessCount,
-			result.TargetCount,
-			firstError,
-		)
-	}
-	return result, nil
+	return CDPReloadResult{}, ErrRendererReloadUnsafe
 }
 
 func (s *CDPService) discoverTargets(ctx context.Context) ([]CDPTarget, error) {
+	if err := s.verifyBoundTarget(ctx); err != nil {
+		return nil, err
+	}
+	if err := s.debuggerAuthority(""); err != nil {
+		return nil, err
+	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, s.Endpoint, nil)
 	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		return nil, err
 	}
 	response, err := s.httpClient.Do(request)
 	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		var networkError net.Error
 		if errors.As(err, &networkError) || errors.Is(err, context.DeadlineExceeded) {
 			return nil, ErrCDPEndpointUnavailable
@@ -256,12 +412,20 @@ func (s *CDPService) discoverTargets(ctx context.Context) ([]CDPTarget, error) {
 		return nil, errors.New("CDP 返回了无效响应")
 	}
 	var targets []CDPTarget
-	if err := json.NewDecoder(response.Body).Decode(&targets); err != nil {
+	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&targets); err != nil {
 		return nil, errors.New("CDP 返回了无效响应")
 	}
 	result := []CDPTarget{}
+	seen := map[string]bool{}
 	for _, target := range targets {
 		if target.Injectable() {
+			if err := s.debuggerAuthority(*target.WebSocketDebuggerURL); err != nil {
+				return nil, err
+			}
+			if seen[target.ID] {
+				return nil, errors.New("duplicate CDP target identity")
+			}
+			seen[target.ID] = true
 			result = append(result, target)
 		}
 	}
@@ -304,14 +468,26 @@ func (s *CDPService) execute(
 	params map[string]any,
 	debuggerURL string,
 ) (map[string]any, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if err := s.verifyBoundTarget(ctx); err != nil {
+		return nil, err
+	}
+	if err := s.debuggerAuthority(debuggerURL); err != nil {
+		return nil, err
+	}
 	header := http.Header{}
 	header.Set("Origin", s.AllowedOrigin)
 	connection, _, err := s.dialer.DialContext(ctx, debuggerURL, header)
 	if err != nil {
-		return nil, err
+		return nil, cdpContextError(ctx, err)
 	}
 	defer connection.Close()
-	deadline := time.Now().Add(5 * time.Second)
+	connection.SetReadLimit(rendererBridgeMaximumPayload)
+	stopCancellation := context.AfterFunc(ctx, func() { _ = connection.Close() })
+	defer stopCancellation()
+	deadline := cdpCommandDeadline(ctx)
 	_ = connection.SetWriteDeadline(deadline)
 	_ = connection.SetReadDeadline(deadline)
 	commandID := s.nextCommandID
@@ -320,12 +496,12 @@ func (s *CDPService) execute(
 		"id": commandID, "method": method, "params": params,
 	}
 	if err := connection.WriteJSON(command); err != nil {
-		return nil, err
+		return nil, cdpContextError(ctx, err)
 	}
 	for {
 		_, message, err := connection.ReadMessage()
 		if err != nil {
-			return nil, err
+			return nil, cdpContextError(ctx, err)
 		}
 		var response map[string]any
 		if err := json.Unmarshal(message, &response); err != nil {
@@ -345,6 +521,27 @@ func (s *CDPService) execute(
 		result, _ := response["result"].(map[string]any)
 		return result, nil
 	}
+}
+
+func cdpCommandDeadline(ctx context.Context) time.Time {
+	deadline := time.Now().Add(5 * time.Second)
+	if contextDeadline, ok := ctx.Deadline(); ok && contextDeadline.Before(deadline) {
+		return contextDeadline
+	}
+	return deadline
+}
+
+func cdpContextError(ctx context.Context, err error) error {
+	if contextError := ctx.Err(); contextError != nil {
+		return contextError
+	}
+	var networkError net.Error
+	if errors.As(err, &networkError) && networkError.Timeout() {
+		if deadline, ok := ctx.Deadline(); ok && !time.Now().Before(deadline) {
+			return context.DeadlineExceeded
+		}
+	}
+	return err
 }
 
 func (s *CDPService) logError(message string) {
