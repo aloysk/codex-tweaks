@@ -4,7 +4,22 @@
 
 <h1 align="center">Codex Tweaks</h1>
 
-> 本 fork 的桌面增强需求与开发准备见 [规划文档入口](docs/desktop-enhancement/README.md)。当前新增内容仅为调研、PRD 与开发计划，尚未实现新增功能；下文保留上游现有产品说明。
+> **本 fork 的方向：官方 Codex 主工作窗口 + 独立增强控制面板 + 可选悬浮胶囊。** 我们汇合社区中有价值的主题、壁纸、即时状态与轻量交互体验，不修改或替换官方主程序。当前已准备需求、设计、架构和开发基础设施，尚未实现这些新增功能。
+
+## Fork 开发入口
+
+| 需要了解 | 文档 |
+| --- | --- |
+| 产品范围、优先级与验收 | [PRD 与准备入口](docs/desktop-enhancement/README.md) |
+| 架构、目录职责与命名 | [ARCHITECTURE.md](ARCHITECTURE.md) |
+| 原生界面、胶囊与主题设计 | [DESIGN.md](DESIGN.md) |
+| 环境、提交检查与验证命令 | [CONTRIBUTING.md](CONTRIBUTING.md) |
+| Ke Spectrum 2、zcode-monitor 与社区资源 | [资源目录](docs/resources/README.md) |
+| 上游基线、兼容与分发边界 | [UPSTREAM.md](docs/desktop-enhancement/UPSTREAM.md) |
+
+从源码参与开发时，先运行 `python scripts/bootstrap-dev.py` 安装本仓库的提交检查，再按 CONTRIBUTING 执行相关验证。当前没有独立发布的 fork 安装包；以下下载链接、截图与功能说明属于**继承的上游产品**，不代表上述新增功能已经交付。
+
+## 上游产品说明
 
 <p align="center">
   Codex Tweaks 是一个面向 Codex 桌面客户端的本地界面定制工具。<br>

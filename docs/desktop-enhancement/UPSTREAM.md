@@ -12,9 +12,19 @@ This file records the evidence needed to continue the desktop enhancement work w
 | Baseline commit time | 2026-10-02 01:44:30 Asia/Singapore |
 | Observed release | `v3.5.9`, 2026-10-02 Asia/Singapore |
 | Upstream license | MIT; retained unchanged in the repository root |
-| Preparation scope | Documentation and repository setup only |
+| Preparation scope | Requirements, project documentation and development infrastructure; no new product feature code |
 
 The fork was created from upstream, then cloned. It was not initialized as an unrelated empty repository. `origin` points to the fork; `upstream` points to the original repository. Local `remote.pushDefault` and the GitHub CLI default repository point to the fork to reduce accidental upstream writes.
+
+## Intended companion direction
+
+The fork's new product center is an independent native control panel with an optional floating capsule. The official Codex app remains the main work window. Theme, wallpaper and reading settings are intended to affect the official renderer through verified runtime adapters; styling the companion alone does not satisfy that requirement. Pets are a later presentation option.
+
+This direction is not inherited functionality. The baseline has package management, CDP injection and native frontends; it does not yet implement the proposed capsule, status/speed adapters or a verified general control-panel-to-renderer settings bridge. Normal official launch followed by companion attachment is a target experience, not a proven capability. Companion startup alongside the official app or at login should ultimately stay in the background without launching Codex itself or taking focus. An explicit request to open the control panel should display or reuse that window; an explicit request to start Codex may start the official app. Existing startup behavior must be tested and changed explicitly before making that claim.
+
+No official binary, application bundle, installer or `app.asar` is patched, repacked or replaced. Missing runtime access disables the affected capability rather than widening that boundary. Shared architecture lives in [ARCHITECTURE.md](../../ARCHITECTURE.md), visual mapping in [DESIGN.md](../../DESIGN.md), and product acceptance in the [PRD](PRD.zh-CN.md).
+
+Ke-Spectrum-2-Design-System and zcode-monitor are curated design/lifecycle references, not imported subsystems. The [resource catalog](../resources/README.md) and [manifest](../resources/manifest.json) record source pins, review boundaries and reuse decisions. Their source-specific monitoring or design infrastructure is not a Codex API.
 
 ## Existing architecture to preserve
 
@@ -34,7 +44,7 @@ The root `AGENTS.md` is authoritative for implementation conventions. Go owns bu
 | Windows build and packaging | `scripts/build-windows.ps1`, `package-windows.ps1`, `verify-windows.ps1` |
 | CI and release | `.github/workflows/ci.yml`, `.github/workflows/release.yml` |
 
-API v3 defines package lifecycle and capabilities such as `ui.settingsSections` v1. It is not a public Codex API for thread identity, usage, context, navigation or composer state. Those capabilities require separate adapters and evidence. A settings adapter can break even when the package API version remains valid.
+API v3 defines package lifecycle and capabilities such as `ui.settingsSections` v1. It is not a public Codex API for thread identity, usage, context, navigation or composer state. Those capabilities require separate adapters and evidence. Registration does not prove navigation, a native settings bridge, selected-thread binding or generation timing. A settings adapter can break even when the package API version remains valid. Account quota, observed activity and output rate retain different scope and precision.
 
 ## Verified issues to address before runtime adoption
 
@@ -53,11 +63,11 @@ Forking source does not establish an independent install or update channel:
 - `scripts/package-windows.ps1` still uses the upstream `com.crzhichen.CodexTweaks.$architecture` package ID and upstream title/author metadata.
 - Application IDs, package IDs, update feeds, settings/data directories, signing identity and uninstall ownership must be reviewed together before distributing an installable fork.
 
-The default product decision is side-by-side development with separate fork-owned state and no automatic migration. The final identifiers and branding must be chosen before the first installable fork build, then treated as persistent compatibility contracts. This preparation commit does not rename upstream namespaces, publish installers, create a release, or configure an updater.
+The default product decision is side-by-side development with separate fork-owned state and no automatic migration. The final identifiers and branding must be chosen before the first installable fork build, then treated as persistent compatibility contracts. Preparation does not rename upstream namespaces, publish installers, create a release, or configure a fork updater. The Release workflow was disabled during preparation; this is separate from changing product update endpoints. CI artifacts remain verification outputs, not isolated installers approved for daily use.
 
-## Development environment snapshot
+## Initial development environment snapshot
 
-Read-only checks were performed on 2026-10-02 Asia/Singapore. They establish installed tool presence, not successful restoration, compilation, packaging or runtime compatibility.
+These initial read-only checks were performed on 2026-10-02 Asia/Singapore, before development-hook setup and CI completion. This dated table records local tool presence only; later validation is recorded below and must not be confused with actual Codex runtime acceptance.
 
 | Dependency | Upstream evidence | Local observation | Follow-up |
 | --- | --- | --- | --- |
@@ -71,29 +81,15 @@ Read-only checks were performed on 2026-10-02 Asia/Singapore. They establish ins
 | Official Codex | Target application | Store package 26.930.2377.0, x64 | No CDP connection, restart or injection was performed |
 | Windows ARM64 / macOS | Upstream supported targets | No runtime evidence from this preparation | Use appropriate hosts for future release acceptance |
 
-## Verification commands for the development phase
+## Subsequent preparation validation and remaining gates
 
-The commands below are references to existing upstream entry points. They are not a record of tests run in this preparation. Inspect scripts and output paths before executing them: build/package scripts replace their own output directories, and live probes touch a running Codex renderer.
+The first planning change was merged after Windows and macOS CI passed. This validates the checks performed by those workflows at that commit; it does not establish the fork's new UI, real-device installation, ARM64 runtime behavior or official-renderer compatibility.
 
-Backend and generated-contract checks, from `backend/`:
+The next preparation change installs repository-local development hooks and adds the companion requirements, architecture, design direction, curated resources and contribution workflow. Follow [CONTRIBUTING.md](../../CONTRIBUTING.md) for the authoritative commands and [development hooks](../development/pre-commit.md) for template provenance. Final local and CI outcomes belong to the delivery record; the presence of a script is not evidence it passed.
 
-```powershell
-go run ./cmd/contractgen -root .. -check
-go vet ./...
-go test ./...
-```
+No prepared companion product has been started or installed, and the user's official Codex has not been connected, restarted or injected during this work. Product gates G1–G4 remain unexecuted; in particular the inherited process-targeting and cleanup issues above are not fixed by documentation or hooks.
 
-The Windows entry points have different parameter contracts:
-
-| Script | Required parameters | Optional parameters relevant to this plan |
-| --- | --- | --- |
-| `scripts/build-windows.ps1` | `-Version` | `-BuildNumber`, `-RuntimeIdentifiers` |
-| `scripts/package-windows.ps1` | `-Version`, `-Channel` | `-RuntimeIdentifiers` |
-| `scripts/verify-windows.ps1` | `-Version`, `-Channel` | `-RuntimeIdentifiers`, `-RequirePackages`, `-ExpectedSigningCertificateSha256` |
-
-The supported runtime identifiers are `win-x64` and `win-arm64`. Use the future fork's agreed development version and identity only after the distribution gate passes. Keep the build, package and verify sequence from upstream CI instead of inventing different packaging steps.
-
-The upstream macOS aggregate gate is `mise run verify` on a macOS host. It includes Xcode and generated-project checks; it cannot be reported as passed from a Windows-only run. ARM64 PE inspection on an x64 host is not an ARM64 runtime test.
+Keep ordinary checks separate from opt-in live tests. Build/package scripts manage their own generated output directories; live probes interact with a real renderer and can enable debugging/import private modules. Review actual side effects and use the appropriate task-scoped setup. A Windows-only run cannot establish the macOS `mise run verify` gate, and ARM64 PE inspection on x64 cannot establish ARM64 runtime behavior. The [implementation plan](IMPLEMENTATION.md) defines the evidence required before runtime adoption or distribution.
 
 ## Upstream synchronization
 

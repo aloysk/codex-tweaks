@@ -15,6 +15,54 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  development:
+    name: Development hooks and documents
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Setup Go for secret scanning
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Bootstrap pinned development tools
+        run: python scripts/bootstrap-dev.py
+
+      - name: Verify hooks and documents
+        env:
+          SKIP: no-commit-to-branch
+        run: |
+          .venv-dev/bin/python -m pre_commit run --all-files
+          python scripts/check-docs.py
+          git diff --exit-code
+
+      - name: Scan committed changes for secrets
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            log_options="--diff-merges=first-parent --max-count=1 HEAD"
+          elif [[ -z "$BASE_SHA" || "$BASE_SHA" =~ ^0+$ ]]; then
+            log_options="--diff-merges=first-parent HEAD"
+          else
+            git cat-file -e "$BASE_SHA^{commit}"
+            log_options="--diff-merges=first-parent $BASE_SHA..$GITHUB_SHA"
+          fi
+          go run github.com/zricethezav/gitleaks/v8@v8.30.1 git --redact --log-opts="$log_options"
+
   macos:
     name: macOS / SwiftUI + Go
     runs-on: macos-26

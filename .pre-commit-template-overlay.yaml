@@ -1,0 +1,26 @@
+# Source: pre-commit-template v5.7.0, csharp profile + language-neutral core.
+# Keep repository decisions here; scripts/render-pre-commit.py checks the output.
+hooks:
+  disable:
+    # Go/Swift/WinUI share UTF-8 without a BOM; no repository-wide encoding edits.
+    - enforce-utf8-bom
+    # Product gates live in docs/desktop-enhancement/IMPLEMENTATION.md.
+    - changelog-gate
+    - open-items-reminder
+  modify:
+    - id: end-of-file-fixer
+      # Apple Icon Composer owns this asset; preserve the upstream bytes.
+      exclude: ^app/Resources/Icons/AppIcon\.icon/icon\.json$
+    - id: mixed-line-ending
+      # Detect mixed endings without rewriting a Windows checkout to LF.
+      args: [--fix=no]
+  add:
+    # Verbatim provider source copied by scripts/render-pre-commit.py.
+    - id: conventional-commit
+      name: conventional-commit
+      entry: python .githooks/conventional-commit
+      language: python
+      stages: [commit-msg]
+      always_run: true
+      pass_filenames: true
+default_install_hook_types: [pre-commit, commit-msg]
