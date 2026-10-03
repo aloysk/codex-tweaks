@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-const ProtocolVersion = 12
+const ProtocolVersion = 13
 
 type Controller struct {
 	mu                  sync.Mutex
@@ -50,6 +50,7 @@ type Controller struct {
 	appearanceErrorKey *string
 	appearanceCancel   context.CancelFunc
 	appearanceBusy     bool
+	signals            signalsState
 
 	config                       AppConfiguration
 	status                       AppStatus
@@ -343,6 +344,7 @@ func (c *Controller) Snapshot() AppSnapshot {
 		ProtocolVersion: ProtocolVersion, Presentation: presentation, Status: c.status,
 		Runtime:    c.runtimeSnapshotLocked(),
 		Appearance: c.appearanceSnapshotLocked(),
+		Signals:    c.signalsSnapshotLocked(presentationText, time.Now()),
 		Enabled:    c.config.Enabled, DisableGPUAcceleration: c.config.DisableGPUAcceleration,
 		DeveloperMode:             c.config.DeveloperMode,
 		DeveloperAllowUnknownNode: c.developerAllowUnknownNode, Packages: packageViews,

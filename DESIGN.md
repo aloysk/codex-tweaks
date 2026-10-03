@@ -1,6 +1,6 @@
 # Companion design direction
 
-The product is a quiet desktop companion for people working in the official Codex app. Settings live in our native control panel; the planned optional capsule exposes a few useful observations without taking keyboard focus. The appearance page follows this native design direction; capsule sketches below remain proposals.
+The product is a quiet desktop companion for people working in the official Codex app. Settings live in our native control panel; the optional capsule draft exposes a few useful observations without taking keyboard focus. The appearance page follows this native design direction; capsule sketches below express the target; runtime acceptance of the draft remains outstanding.
 
 ## Composition
 

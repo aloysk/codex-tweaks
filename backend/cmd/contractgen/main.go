@@ -157,6 +157,7 @@ func generateSwift(keys []string, contract core.PresentationContract) []byte {
 	for _, value := range []any{
 		core.PresentationTokens{}, core.AvailableActions{}, core.StatusPresentation{}, core.PlatformPresentation{}, core.PresentationContract{}, core.ShutdownResult{},
 		core.AppearanceSettings{}, core.AppearanceOption{}, core.AppearanceOptions{}, core.AppearanceActions{}, core.AppearanceSnapshot{}, core.AppearanceImageResult{},
+		core.SignalPresentation{}, core.QuotaWindow{}, core.CapsuleSettings{}, core.SignalsSnapshot{},
 	} {
 		writeSwiftStruct(&result, reflect.TypeOf(value))
 	}
@@ -300,6 +301,7 @@ func generateCSharp(keys []string, contract core.PresentationContract) []byte {
 	for _, value := range []any{
 		core.PresentationTokens{}, core.AvailableActions{}, core.StatusPresentation{}, core.PlatformPresentation{}, core.PresentationContract{}, core.ShutdownResult{},
 		core.AppearanceSettings{}, core.AppearanceOption{}, core.AppearanceOptions{}, core.AppearanceActions{}, core.AppearanceSnapshot{}, core.AppearanceImageResult{},
+		core.SignalPresentation{}, core.QuotaWindow{}, core.CapsuleSettings{}, core.SignalsSnapshot{},
 	} {
 		writeCSharpClass(&result, reflect.TypeOf(value))
 	}

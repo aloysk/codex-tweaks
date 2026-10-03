@@ -138,6 +138,7 @@ func (c *Controller) Refresh() {
 	targetChanged := c.runtime.Target != nil && (observation.Target == nil || !c.runtime.Target.Equal(*observation.Target))
 	if targetChanged {
 		c.invalidateAppearanceLocked()
+		c.signals = signalsState{}
 		if c.nodeCancel != nil {
 			c.nodeCancel()
 		}
@@ -249,9 +250,13 @@ func (c *Controller) Refresh() {
 	default:
 		c.status = AppStatus{Kind: StatusError, Message: stringPointer("页面没有确认增强结果")}
 	}
+	if c.status.Kind != StatusConnected {
+		c.signals = signalsState{}
+	}
 	c.mu.Unlock()
 	if err == nil && result.SuccessCount > 0 {
 		c.refreshAppearance(ctx, epoch)
+		c.refreshSignals(ctx, epoch)
 	}
 	c.emit()
 }
@@ -293,6 +298,9 @@ func (c *Controller) publishRuntimeStatus(epoch uint64, status AppStatus) {
 		return
 	}
 	c.status = status
+	if status.Kind != StatusConnected {
+		c.signals = signalsState{}
+	}
 	c.mu.Unlock()
 	c.emit()
 }

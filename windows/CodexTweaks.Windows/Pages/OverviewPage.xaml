@@ -72,6 +72,8 @@
                     </Grid>
                 </Border>
 
+                <StackPanel x:Name="SignalsContainer" Style="{StaticResource CodexSectionStackStyle}" />
+
                 <StackPanel Style="{StaticResource CodexSectionStackStyle}">
                     <TextBlock x:Name="ControlTitle" Style="{StaticResource CodexSectionTitleTextStyle}" />
                     <Grid ColumnSpacing="20">

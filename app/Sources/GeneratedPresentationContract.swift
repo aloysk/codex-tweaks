@@ -2,7 +2,7 @@
 import Foundation
 
 enum BackendProtocolContract {
-    static let protocolVersion = 12
+    static let protocolVersion = 13
     static let shutdownGraceSeconds: TimeInterval = 5
 }
 
@@ -81,6 +81,14 @@ enum PresentationTextKey: String, CaseIterable, Sendable {
     case appearanceThemeNative = "appearance.theme.native"
     case appearanceTitle = "appearance.title"
     case appearanceUnsupportedOption = "appearance.unsupportedOption"
+    case capsuleCollapse = "capsule.collapse"
+    case capsuleDetail = "capsule.detail"
+    case capsuleExpand = "capsule.expand"
+    case capsuleHide = "capsule.hide"
+    case capsuleOpenPanel = "capsule.openPanel"
+    case capsuleResetPosition = "capsule.resetPosition"
+    case capsuleShow = "capsule.show"
+    case capsuleTitle = "capsule.title"
     case commonCancel = "common.cancel"
     case commonClose = "common.close"
     case commonConfirm = "common.confirm"
@@ -329,6 +337,24 @@ enum PresentationTextKey: String, CaseIterable, Sendable {
     case selectorLatestSemverTag = "selector.latestSemverTag"
     case selectorTag = "selector.tag"
     case selectorTagValue = "selector.tagValue"
+    case signalsCacheUpdatedAt = "signals.cacheUpdatedAt"
+    case signalsInvalidFields = "signals.invalidFields"
+    case signalsNoSource = "signals.noSource"
+    case signalsObservedAt = "signals.observedAt"
+    case signalsQuota = "signals.quota"
+    case signalsQuotaDetail = "signals.quotaDetail"
+    case signalsQuotaSource = "signals.quotaSource"
+    case signalsRate = "signals.rate"
+    case signalsRateUnsupported = "signals.rateUnsupported"
+    case signalsSourceUpdatedAt = "signals.sourceUpdatedAt"
+    case signalsSources = "signals.sources"
+    case signalsStale = "signals.stale"
+    case signalsStaleMarker = "signals.staleMarker"
+    case signalsTask = "signals.task"
+    case signalsTaskUnsupported = "signals.taskUnsupported"
+    case signalsTimeUnknown = "signals.timeUnknown"
+    case signalsTitle = "signals.title"
+    case signalsUnavailable = "signals.unavailable"
     case statusCodexNotRunningDetail = "status.codexNotRunning.detail"
     case statusCodexNotRunningTitle = "status.codexNotRunning.title"
     case statusConnectedMany = "status.connected.many"
@@ -405,6 +431,9 @@ struct BackendPresentationTokens: Codable, Equatable, Sendable {
     let successColor: String
     let warningColor: String
     let dangerColor: String
+    let capsuleWidth: Int
+    let capsuleHeight: Int
+    let capsuleCollapsedWidth: Int
 }
 
 struct BackendAvailableActions: Codable, Equatable, Sendable {
@@ -514,6 +543,36 @@ struct BackendAppearanceImageResult: Codable, Equatable, Sendable {
     let format: String
 }
 
+struct BackendSignalPresentation: Codable, Equatable, Sendable {
+    let label: String
+    let value: String
+    let status: String
+    let detail: String
+    let source: String
+    let observedAt: String
+    let cacheUpdatedAt: String
+    let sourceUpdatedAt: String
+}
+
+struct BackendQuotaWindow: Codable, Equatable, Sendable {
+    let title: String
+    let remaining: String
+    let resetAt: String
+}
+
+struct BackendCapsuleSettings: Codable, Equatable, Sendable {
+    let enabled: Bool
+    let collapsed: Bool
+}
+
+struct BackendSignalsSnapshot: Codable, Equatable, Sendable {
+    let task: BackendSignalPresentation
+    let rate: BackendSignalPresentation
+    let quota: BackendSignalPresentation
+    let windows: [BackendQuotaWindow]
+    let capsule: BackendCapsuleSettings
+}
+
 enum GeneratedAppearanceDefaults {
     static let settings = BackendAppearanceSettings(theme: "native", readingLayout: "native", backgroundMode: "off", solidColor: "#DEF3E5", imageAssetId: nil, overlayOpacity: 88)
 }
@@ -587,6 +646,14 @@ enum GeneratedPresentationDefaults {
         .appearanceThemeNative: "Native",
         .appearanceTitle: "Appearance",
         .appearanceUnsupportedOption: "This option is currently unavailable.",
+        .capsuleCollapse: "Collapse",
+        .capsuleDetail: "Shares the panel snapshot. Passive updates keep keyboard focus.",
+        .capsuleExpand: "Expand",
+        .capsuleHide: "Hide",
+        .capsuleOpenPanel: "Open panel",
+        .capsuleResetPosition: "Reset position",
+        .capsuleShow: "Show capsule",
+        .capsuleTitle: "Floating capsule",
         .commonCancel: "Cancel",
         .commonClose: "Close",
         .commonConfirm: "Confirm",
@@ -835,6 +902,24 @@ enum GeneratedPresentationDefaults {
         .selectorLatestSemverTag: "Latest SemVer tag",
         .selectorTag: "Specific tag",
         .selectorTagValue: "Tag name",
+        .signalsCacheUpdatedAt: "Cache update",
+        .signalsInvalidFields: "Limit fields are missing or invalid. Unknown values are not zero.",
+        .signalsNoSource: "No account-scoped limits are available. You can keep using Codex.",
+        .signalsObservedAt: "Local read",
+        .signalsQuota: "Account limits",
+        .signalsQuotaDetail: "Remaining capacity in the actual limit windows.",
+        .signalsQuotaSource: "Existing official page cache · private adapter",
+        .signalsRate: "Output rate",
+        .signalsRateUnsupported: "Output counts and generation timing for the same turn are unavailable.",
+        .signalsSourceUpdatedAt: "Source update",
+        .signalsSources: "Sources and timestamps",
+        .signalsStale: "The cache is stale. Reading it again does not refresh the source.",
+        .signalsStaleMarker: "Stale",
+        .signalsTask: "Current task",
+        .signalsTaskUnsupported: "Selected-task identity and lifecycle are not verified for this version.",
+        .signalsTimeUnknown: "Unknown",
+        .signalsTitle: "Tasks and limits",
+        .signalsUnavailable: "Unavailable",
         .statusCodexNotRunningDetail: "You can open Codex again",
         .statusCodexNotRunningTitle: "Codex is not running",
         .statusConnectedMany: "Connected to {count} windows",
@@ -890,5 +975,5 @@ enum GeneratedPresentationDefaults {
         .updateVersionBuild: "Version {version} (Build {build})",
         .updateViewRelease: "View Release",
     ]
-    static let contract = BackendPresentationContract(version: 2, locale: "en", languagePreference: "auto", languageOrder: ["auto", "zh-CN", "zh-TW", "en", "ja", "ko"], languageOptions: ["auto": "Automatic (System Language)", "en": "English", "ja": "日本語", "ko": "한국어", "zh-CN": "简体中文", "zh-TW": "繁體中文"], text: Dictionary(uniqueKeysWithValues: text.map { ($0.key.rawValue, $0.value) }), tokens: BackendPresentationTokens(windowMinWidth: 820, windowMinHeight: 560, windowDefaultWidth: 920, windowDefaultHeight: 640, navigationWidth: 220, contentMaxWidth: 1120, pagePadding: 32, sectionSpacing: 28, cardPadding: 20, cardCornerRadius: 14, controlSpacing: 12, compactSpacing: 7, statusIconSize: 36, animationFastMS: 120, animationStandardMS: 220, accentColor: "#0A84FF", successColor: "#30D158", warningColor: "#FF9F0A", dangerColor: "#FF453A"), actions: BackendAvailableActions(openCodex: true, restartCodex: false, restartCodexUI: false, reinject: false, openPackagesDirectory: true, openLogFile: true, openRepository: true, setEnabled: true, setDisableGPUAcceleration: true, setDeveloperMode: true, reloadPackages: true, installLocalPackage: true, installRemotePackage: false, checkNodeEnvironment: true, checkGitEnvironment: true, checkManagedPackageUpdates: false, refreshLog: true, clearLog: false, readAuthoringPrompt: false, checkAppUpdate: false, setUpdatePreferences: false, setLanguage: true, installAppUpdate: false), status: BackendStatusPresentation(title: "Starting", detail: "Codex Tweaks is establishing a local connection.", tone: "accent"), platform: BackendPlatformPresentation(operatingSystem: "darwin", architecture: "universal", cdpEndpoint: "127.0.0.1:9335", repositoryURL: "https://github.com/aloysk/codex-tweaks", updateInstallStrategy: "sparkle"))
+    static let contract = BackendPresentationContract(version: 2, locale: "en", languagePreference: "auto", languageOrder: ["auto", "zh-CN", "zh-TW", "en", "ja", "ko"], languageOptions: ["auto": "Automatic (System Language)", "en": "English", "ja": "日本語", "ko": "한국어", "zh-CN": "简体中文", "zh-TW": "繁體中文"], text: Dictionary(uniqueKeysWithValues: text.map { ($0.key.rawValue, $0.value) }), tokens: BackendPresentationTokens(windowMinWidth: 820, windowMinHeight: 560, windowDefaultWidth: 920, windowDefaultHeight: 640, navigationWidth: 220, contentMaxWidth: 1120, pagePadding: 32, sectionSpacing: 28, cardPadding: 20, cardCornerRadius: 14, controlSpacing: 12, compactSpacing: 7, statusIconSize: 36, animationFastMS: 120, animationStandardMS: 220, accentColor: "#0A84FF", successColor: "#30D158", warningColor: "#FF9F0A", dangerColor: "#FF453A", capsuleWidth: 380, capsuleHeight: 68, capsuleCollapsedWidth: 200), actions: BackendAvailableActions(openCodex: true, restartCodex: false, restartCodexUI: false, reinject: false, openPackagesDirectory: true, openLogFile: true, openRepository: true, setEnabled: true, setDisableGPUAcceleration: true, setDeveloperMode: true, reloadPackages: true, installLocalPackage: true, installRemotePackage: false, checkNodeEnvironment: true, checkGitEnvironment: true, checkManagedPackageUpdates: false, refreshLog: true, clearLog: false, readAuthoringPrompt: false, checkAppUpdate: false, setUpdatePreferences: false, setLanguage: true, installAppUpdate: false), status: BackendStatusPresentation(title: "Starting", detail: "Codex Tweaks is establishing a local connection.", tone: "accent"), platform: BackendPlatformPresentation(operatingSystem: "darwin", architecture: "universal", cdpEndpoint: "127.0.0.1:9335", repositoryURL: "https://github.com/aloysk/codex-tweaks", updateInstallStrategy: "sparkle"))
 }

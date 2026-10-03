@@ -230,6 +230,12 @@ func (s *Server) dispatch(incoming request) (any, error) {
 	switch incoming.Method {
 	case "getState":
 		return c.Snapshot(), nil
+	case "setCapsule":
+		var params core.CapsuleSettings
+		if err := decodeParams(incoming.Params, &params); err != nil {
+			return nil, err
+		}
+		return accepted(c.SetCapsule(params))
 	case "appearance.preview", "appearance.apply", "appearance.restoreNative":
 		return s.dispatchAppearance(context.Background(), incoming)
 	case "appearance.cancelPreview":

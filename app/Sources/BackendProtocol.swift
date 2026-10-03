@@ -81,6 +81,7 @@ struct BackendAppSnapshot: Codable, Equatable, Sendable {
     let presentation: BackendPresentationContract
     let status: BackendAppStatus
     let appearance: BackendAppearanceSnapshot
+    let signals: BackendSignalsSnapshot
     let enabled: Bool
     let disableGPUAcceleration: Bool
     let developerMode: Bool

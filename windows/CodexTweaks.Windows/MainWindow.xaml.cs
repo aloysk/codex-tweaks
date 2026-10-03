@@ -27,6 +27,7 @@ public sealed partial class MainWindow : Window
     private readonly PackagesPage _packagesPage;
     private readonly LogsPage _logsPage;
     private readonly UpdatesPage _updatesPage;
+    private CapsuleWindow? _capsule;
     private AppWindow? _appWindow;
     private BackendAppSnapshot? _snapshot;
     private VelopackUpdateResult? _velopackResult;
@@ -40,6 +41,8 @@ public sealed partial class MainWindow : Window
     private bool _selectingNavigation;
     private bool _trayModeEnabled;
     private bool _allowClose;
+    private bool _backendStopping;
+    private bool _backendFailed;
 
     public MainWindow()
     {
@@ -59,6 +62,10 @@ public sealed partial class MainWindow : Window
             DispatcherQueue.TryEnqueue(() =>
             {
                 _trayError = message;
+                _backendFailed = true;
+                _snapshot = null;
+                _overviewPage.ClearSignals(this);
+                _capsule?.Hide();
                 ShowError(message);
                 NotifyTrayStateChanged();
             });
@@ -201,6 +208,7 @@ public sealed partial class MainWindow : Window
 
     private void ApplySnapshot(BackendAppSnapshot snapshot)
     {
+        if (_backendStopping || _backendFailed) return;
         if (snapshot.ProtocolVersion != BackendClient.ProtocolVersion)
         {
             ShowError(Text(PresentationTextKey.AppProtocolMismatch));
@@ -212,6 +220,19 @@ public sealed partial class MainWindow : Window
         LoadingPanel.Visibility = Visibility.Collapsed;
         ApplyStaticText();
         RenderCurrentPage();
+        if (snapshot.Signals.Capsule.Enabled || _capsule is not null)
+        {
+            try
+            {
+                _capsule ??= new CapsuleWindow(this);
+                _capsule.Render(snapshot);
+            }
+            catch (Exception exception)
+            {
+                App.LogException("Capsule could not be shown safely", exception);
+                ShowError(exception.Message);
+            }
+        }
         NotifyTrayStateChanged();
     }
 
@@ -225,6 +246,8 @@ public sealed partial class MainWindow : Window
         _trayModeEnabled = true;
         return true;
     }
+
+    internal void ResetCapsulePosition() => _capsule?.ResetPosition();
 
     internal void ShowFromTray()
     {
@@ -265,6 +288,9 @@ public sealed partial class MainWindow : Window
 
     private async Task ShutdownBackendAsync()
     {
+        _backendStopping = true;
+        _capsule?.Close();
+        _capsule = null;
         try
         {
             await _backend.DisposeAsync();

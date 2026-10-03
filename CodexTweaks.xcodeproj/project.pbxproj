@@ -18,6 +18,7 @@
 		2E6F7321FDC0E8D91110C9E1 /* BackendJSON.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25E3517257D811F2B1D3625A /* BackendJSON.swift */; };
 		2EE2FDCBD2FE24842E25C45D /* TweakPackageBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63708A61AFD3EB99BE1C3359 /* TweakPackageBuilder.swift */; };
 		444F810FBED64BEF61A48D3D /* MainWindowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F53421B72A4751C046846C60 /* MainWindowView.swift */; };
+		4E10BAF7FBB9E9D891660CCF /* CapsuleWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08C6A0519830B21CA5407971 /* CapsuleWindowController.swift */; };
 		4F40D070B051F7E9E4D2AC5C /* SparkleUpdateController.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE948BF0C89AAC647E0A612E /* SparkleUpdateController.swift */; };
 		54B0B6FE5BFFCD0689A620EF /* BackendClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ECD0C73EE0D60F0F6A53202 /* BackendClient.swift */; };
 		5DBF9AC702A390EB5F6499B2 /* PresentationColor.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8078C635651B9E12B769538 /* PresentationColor.swift */; };
@@ -36,6 +37,7 @@
 		9BD95832142FCA6E642F6E68 /* MenuBarContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66D2C341CFA9C0CFC0CCB4EE /* MenuBarContent.swift */; };
 		A0A37D1CE682185A14010D8B /* TweakPackageDependencyResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CB762E9C9F9FD3D4400C65F /* TweakPackageDependencyResolver.swift */; };
 		A2F34D3432AAC244605108FD /* THIRD-PARTY-NOTICES.txt in Resources */ = {isa = PBXBuildFile; fileRef = 05F2CA88227725AD939DEEB2 /* THIRD-PARTY-NOTICES.txt */; };
+		A5D6F456D4F10287187D3FD2 /* SignalsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDE28B1F4C980542C63088C2 /* SignalsView.swift */; };
 		B07DCC0D1F3A83EB3CA521A3 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = DE823B2C0079E436D758AA8F /* Localizable.strings */; };
 		B89FB6D55F5D0E0CB0EA3E7F /* PresentationText.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDC46BCBEBD8535824D33363 /* PresentationText.swift */; };
 		C14CBB8530ECDC408598896C /* TweakPackageModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2ED75A85C1B3152DC926A30F /* TweakPackageModels.swift */; };
@@ -58,6 +60,7 @@
 		02A9D8B8658E09C352A7F47D /* AppearanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppearanceView.swift; sourceTree = "<group>"; };
 		05F2CA88227725AD939DEEB2 /* THIRD-PARTY-NOTICES.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "THIRD-PARTY-NOTICES.txt"; sourceTree = "<group>"; };
 		061D08E9E8DEFC89853857CB /* AppearanceContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppearanceContractTests.swift; sourceTree = "<group>"; };
+		08C6A0519830B21CA5407971 /* CapsuleWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CapsuleWindowController.swift; sourceTree = "<group>"; };
 		0F5EBF53A71E7D7C218FDA82 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = AppIcon.icon; sourceTree = "<group>"; };
 		12AEDA74C8286F095B2A4E60 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		25E3517257D811F2B1D3625A /* BackendJSON.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendJSON.swift; sourceTree = "<group>"; };
@@ -88,6 +91,7 @@
 		DDC46BCBEBD8535824D33363 /* PresentationText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresentationText.swift; sourceTree = "<group>"; };
 		DECCE54F4FF81979BBBAB5CC /* TweakPackageRemoteManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TweakPackageRemoteManager.swift; sourceTree = "<group>"; };
 		ED5BA7E20B31B6B736EF5A33 /* Tweaks */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Tweaks; path = app/Resources/Tweaks; sourceTree = SOURCE_ROOT; };
+		EDE28B1F4C980542C63088C2 /* SignalsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignalsView.swift; sourceTree = "<group>"; };
 		F38F687C3332FDB933C2F404 /* BackendClientLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendClientLifecycleTests.swift; sourceTree = "<group>"; };
 		F53421B72A4751C046846C60 /* MainWindowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainWindowView.swift; sourceTree = "<group>"; };
 		F659FBB7C357009B1FE4C80E /* CodexTweaksBundleTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CodexTweaksBundleTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -131,6 +135,7 @@
 				5ECD0C73EE0D60F0F6A53202 /* BackendClient.swift */,
 				25E3517257D811F2B1D3625A /* BackendJSON.swift */,
 				D46E6EAFFFA8697F8252BAFC /* BackendProtocol.swift */,
+				08C6A0519830B21CA5407971 /* CapsuleWindowController.swift */,
 				C054F18E9178A1188A15F944 /* CodexTweaksApp.swift */,
 				FFBAED99F1376AC7FE90B523 /* GeneratedPresentationContract.swift */,
 				627661EEB9F033E025CC5AC1 /* MacOSAppVisibilityController.swift */,
@@ -138,6 +143,7 @@
 				66D2C341CFA9C0CFC0CCB4EE /* MenuBarContent.swift */,
 				F8078C635651B9E12B769538 /* PresentationColor.swift */,
 				DDC46BCBEBD8535824D33363 /* PresentationText.swift */,
+				EDE28B1F4C980542C63088C2 /* SignalsView.swift */,
 				FE948BF0C89AAC647E0A612E /* SparkleUpdateController.swift */,
 				63708A61AFD3EB99BE1C3359 /* TweakPackageBuilder.swift */,
 				5CB762E9C9F9FD3D4400C65F /* TweakPackageDependencyResolver.swift */,
@@ -392,6 +398,7 @@
 				54B0B6FE5BFFCD0689A620EF /* BackendClient.swift in Sources */,
 				2E6F7321FDC0E8D91110C9E1 /* BackendJSON.swift in Sources */,
 				9B6EFD795DE11B522F620A75 /* BackendProtocol.swift in Sources */,
+				4E10BAF7FBB9E9D891660CCF /* CapsuleWindowController.swift in Sources */,
 				20E842FFBE6F22751C5C61E9 /* CodexTweaksApp.swift in Sources */,
 				801487236AF0F6797A8F1341 /* GeneratedPresentationContract.swift in Sources */,
 				6877641669E4507083E30A63 /* MacOSAppVisibilityController.swift in Sources */,
@@ -399,6 +406,7 @@
 				9BD95832142FCA6E642F6E68 /* MenuBarContent.swift in Sources */,
 				5DBF9AC702A390EB5F6499B2 /* PresentationColor.swift in Sources */,
 				B89FB6D55F5D0E0CB0EA3E7F /* PresentationText.swift in Sources */,
+				A5D6F456D4F10287187D3FD2 /* SignalsView.swift in Sources */,
 				4F40D070B051F7E9E4D2AC5C /* SparkleUpdateController.swift in Sources */,
 				0E2FBEE784B852532424F206 /* TweakPackageBuilder.swift in Sources */,
 				0AD62E2F7A6F5259A737C7E7 /* TweakPackageDependencyResolver.swift in Sources */,
