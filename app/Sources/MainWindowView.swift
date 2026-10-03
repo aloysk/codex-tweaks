@@ -1205,6 +1205,7 @@ private struct OverviewView: View {
             VStack(alignment: .leading, spacing: CGFloat(model.tokens.sectionSpacing)) {
                 header
                 statusSurface
+                SignalsView(model: model)
                 controls
                 aiAuthoring
                 workflow

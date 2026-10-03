@@ -120,6 +120,12 @@ final class BackendProtocolTests: XCTestCase {
               "presentation": \(presentationJSON),
               "status": {"kind": "connected", "targetCount": 1},
               "appearance": \(appearanceJSON),
+              "signals": {
+                "task": {"label":"Task","value":"Unavailable","status":"unavailable","detail":"","source":"","observedAt":"","cacheUpdatedAt":"","sourceUpdatedAt":"Unknown"},
+                "rate": {"label":"Rate","value":"Unavailable","status":"unavailable","detail":"","source":"","observedAt":"","cacheUpdatedAt":"","sourceUpdatedAt":"Unknown"},
+                "quota": {"label":"Limits","value":"Unavailable","status":"unavailable","detail":"","source":"","observedAt":"","cacheUpdatedAt":"","sourceUpdatedAt":"Unknown"},
+                "windows": [], "capsule": {"enabled":false,"collapsed":false}
+              },
               "enabled": true,
               "disableGPUAcceleration": false,
               "developerMode": false,

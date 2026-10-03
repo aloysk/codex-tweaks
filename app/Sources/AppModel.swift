@@ -11,6 +11,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var status: Status = .starting
     @Published private(set) var presentation: BackendPresentationContract?
     @Published private(set) var appearance: BackendAppearanceSnapshot?
+    @Published private(set) var signals: BackendSignalsSnapshot?
     @Published private(set) var logText = ""
     @Published private(set) var isAuthoringPromptCopied = false
     @Published private(set) var tweakPackages: [TweakPackage] = []
@@ -224,6 +225,8 @@ final class AppModel: ObservableObject {
             switch failure {
             case .connectionLost:
                 self.hasBackendConnectionFailed = true
+                self.signals = nil
+                CapsuleWindowController.shared.hide()
                 self.status = .error(self.text(.appBackendNotRunning))
             }
         }
@@ -241,6 +244,7 @@ final class AppModel: ObservableObject {
 
     func stopBackend() async -> Bool {
         isStoppingBackend = true
+        CapsuleWindowController.shared.close()
         promptCopyResetTask?.cancel()
         promptCopyResetTask = nil
         do {
@@ -547,6 +551,10 @@ final class AppModel: ObservableObject {
         command(method, params)
     }
 
+    func setCapsule(enabled: Bool, collapsed: Bool) {
+        command("setCapsule", BackendCapsuleSettings(enabled: enabled, collapsed: collapsed))
+    }
+
     func sendUpdateCommand(_ method: String) { command(method) }
 
     private func apply(_ snapshot: BackendAppSnapshot) {
@@ -557,6 +565,8 @@ final class AppModel: ObservableObject {
         }
         presentation = snapshot.presentation
         appearance = snapshot.appearance
+        signals = snapshot.signals
+        CapsuleWindowController.shared.render(model: self)
         isApplyingSnapshot = true
         isEnabled = snapshot.enabled
         isGPUAccelerationDisabled = snapshot.disableGPUAcceleration

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "protocolVersion": 12,
+  "protocolVersion": 13,
   "name": "Codex Tweaks Companion",
   "bundleIdentifier": "io.github.aloysk.codexcompanion",
   "publisher": "aloysk",

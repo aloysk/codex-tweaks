@@ -50,6 +50,7 @@ type AppConfiguration struct {
 	UpdateLastCheckAt      *CodableTime       `json:"updateLastCheckAt,omitempty"`
 	UpdateSkippedVersions  []string           `json:"updateSkippedVersions"`
 	Appearance             AppearanceSettings `json:"appearance"`
+	Capsule                CapsuleSettings    `json:"capsule"`
 }
 
 type PackageView struct {
@@ -141,6 +142,7 @@ type AppSnapshot struct {
 	Status                     AppStatus                     `json:"status"`
 	Runtime                    RuntimeSnapshot               `json:"runtime"`
 	Appearance                 AppearanceSnapshot            `json:"appearance"`
+	Signals                    SignalsSnapshot               `json:"signals"`
 	Enabled                    bool                          `json:"enabled"`
 	DisableGPUAcceleration     bool                          `json:"disableGPUAcceleration"`
 	DeveloperMode              bool                          `json:"developerMode"`

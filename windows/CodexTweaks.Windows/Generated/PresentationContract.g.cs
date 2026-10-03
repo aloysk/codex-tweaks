@@ -7,7 +7,7 @@ namespace CodexTweaks.Windows.Generated;
 
 internal static class BackendProtocolContract
 {
-    internal const int ProtocolVersion = 12;
+    internal const int ProtocolVersion = 13;
     internal const int ShutdownGraceSeconds = 5;
 }
 
@@ -88,6 +88,14 @@ internal static class PresentationTextKey
     internal const string AppearanceThemeNative = "appearance.theme.native";
     internal const string AppearanceTitle = "appearance.title";
     internal const string AppearanceUnsupportedOption = "appearance.unsupportedOption";
+    internal const string CapsuleCollapse = "capsule.collapse";
+    internal const string CapsuleDetail = "capsule.detail";
+    internal const string CapsuleExpand = "capsule.expand";
+    internal const string CapsuleHide = "capsule.hide";
+    internal const string CapsuleOpenPanel = "capsule.openPanel";
+    internal const string CapsuleResetPosition = "capsule.resetPosition";
+    internal const string CapsuleShow = "capsule.show";
+    internal const string CapsuleTitle = "capsule.title";
     internal const string CommonCancel = "common.cancel";
     internal const string CommonClose = "common.close";
     internal const string CommonConfirm = "common.confirm";
@@ -336,6 +344,24 @@ internal static class PresentationTextKey
     internal const string SelectorLatestSemverTag = "selector.latestSemverTag";
     internal const string SelectorTag = "selector.tag";
     internal const string SelectorTagValue = "selector.tagValue";
+    internal const string SignalsCacheUpdatedAt = "signals.cacheUpdatedAt";
+    internal const string SignalsInvalidFields = "signals.invalidFields";
+    internal const string SignalsNoSource = "signals.noSource";
+    internal const string SignalsObservedAt = "signals.observedAt";
+    internal const string SignalsQuota = "signals.quota";
+    internal const string SignalsQuotaDetail = "signals.quotaDetail";
+    internal const string SignalsQuotaSource = "signals.quotaSource";
+    internal const string SignalsRate = "signals.rate";
+    internal const string SignalsRateUnsupported = "signals.rateUnsupported";
+    internal const string SignalsSourceUpdatedAt = "signals.sourceUpdatedAt";
+    internal const string SignalsSources = "signals.sources";
+    internal const string SignalsStale = "signals.stale";
+    internal const string SignalsStaleMarker = "signals.staleMarker";
+    internal const string SignalsTask = "signals.task";
+    internal const string SignalsTaskUnsupported = "signals.taskUnsupported";
+    internal const string SignalsTimeUnknown = "signals.timeUnknown";
+    internal const string SignalsTitle = "signals.title";
+    internal const string SignalsUnavailable = "signals.unavailable";
     internal const string StatusCodexNotRunningDetail = "status.codexNotRunning.detail";
     internal const string StatusCodexNotRunningTitle = "status.codexNotRunning.title";
     internal const string StatusConnectedMany = "status.connected.many";
@@ -450,6 +476,15 @@ internal sealed class PresentationTokens
 
     [JsonPropertyName("dangerColor")]
     public string DangerColor { get; init; } = string.Empty;
+
+    [JsonPropertyName("capsuleWidth")]
+    public int CapsuleWidth { get; init; }
+
+    [JsonPropertyName("capsuleHeight")]
+    public int CapsuleHeight { get; init; }
+
+    [JsonPropertyName("capsuleCollapsedWidth")]
+    public int CapsuleCollapsedWidth { get; init; }
 
 }
 
@@ -719,6 +754,76 @@ internal sealed class AppearanceImageResult
 
 }
 
+internal sealed class SignalPresentation
+{
+    [JsonPropertyName("label")]
+    public string Label { get; init; } = string.Empty;
+
+    [JsonPropertyName("value")]
+    public string Value { get; init; } = string.Empty;
+
+    [JsonPropertyName("status")]
+    public string Status { get; init; } = string.Empty;
+
+    [JsonPropertyName("detail")]
+    public string Detail { get; init; } = string.Empty;
+
+    [JsonPropertyName("source")]
+    public string Source { get; init; } = string.Empty;
+
+    [JsonPropertyName("observedAt")]
+    public string ObservedAt { get; init; } = string.Empty;
+
+    [JsonPropertyName("cacheUpdatedAt")]
+    public string CacheUpdatedAt { get; init; } = string.Empty;
+
+    [JsonPropertyName("sourceUpdatedAt")]
+    public string SourceUpdatedAt { get; init; } = string.Empty;
+
+}
+
+internal sealed class QuotaWindow
+{
+    [JsonPropertyName("title")]
+    public string Title { get; init; } = string.Empty;
+
+    [JsonPropertyName("remaining")]
+    public string Remaining { get; init; } = string.Empty;
+
+    [JsonPropertyName("resetAt")]
+    public string ResetAt { get; init; } = string.Empty;
+
+}
+
+internal sealed class CapsuleSettings
+{
+    [JsonPropertyName("enabled")]
+    public bool Enabled { get; init; }
+
+    [JsonPropertyName("collapsed")]
+    public bool Collapsed { get; init; }
+
+}
+
+internal sealed class SignalsSnapshot
+{
+    [JsonPropertyName("task")]
+    public SignalPresentation Task { get; init; } = new();
+
+    [JsonPropertyName("rate")]
+    public SignalPresentation Rate { get; init; } = new();
+
+    [JsonPropertyName("quota")]
+    public SignalPresentation Quota { get; init; } = new();
+
+    [JsonPropertyName("windows")]
+    public List<QuotaWindow> Windows { get; init; } = new();
+
+    [JsonPropertyName("capsule")]
+    public CapsuleSettings Capsule { get; init; } = new();
+
+}
+
 internal static class PresentationDefaults
 {
     internal static AppearanceSettings Appearance { get; } = new()
@@ -800,6 +905,14 @@ internal static class PresentationDefaults
         [PresentationTextKey.AppearanceThemeNative] = "Native",
         [PresentationTextKey.AppearanceTitle] = "Appearance",
         [PresentationTextKey.AppearanceUnsupportedOption] = "This option is currently unavailable.",
+        [PresentationTextKey.CapsuleCollapse] = "Collapse",
+        [PresentationTextKey.CapsuleDetail] = "Shares the panel snapshot. Passive updates keep keyboard focus.",
+        [PresentationTextKey.CapsuleExpand] = "Expand",
+        [PresentationTextKey.CapsuleHide] = "Hide",
+        [PresentationTextKey.CapsuleOpenPanel] = "Open panel",
+        [PresentationTextKey.CapsuleResetPosition] = "Reset position",
+        [PresentationTextKey.CapsuleShow] = "Show capsule",
+        [PresentationTextKey.CapsuleTitle] = "Floating capsule",
         [PresentationTextKey.CommonCancel] = "Cancel",
         [PresentationTextKey.CommonClose] = "Close",
         [PresentationTextKey.CommonConfirm] = "Confirm",
@@ -1048,6 +1161,24 @@ internal static class PresentationDefaults
         [PresentationTextKey.SelectorLatestSemverTag] = "Latest SemVer tag",
         [PresentationTextKey.SelectorTag] = "Specific tag",
         [PresentationTextKey.SelectorTagValue] = "Tag name",
+        [PresentationTextKey.SignalsCacheUpdatedAt] = "Cache update",
+        [PresentationTextKey.SignalsInvalidFields] = "Limit fields are missing or invalid. Unknown values are not zero.",
+        [PresentationTextKey.SignalsNoSource] = "No account-scoped limits are available. You can keep using Codex.",
+        [PresentationTextKey.SignalsObservedAt] = "Local read",
+        [PresentationTextKey.SignalsQuota] = "Account limits",
+        [PresentationTextKey.SignalsQuotaDetail] = "Remaining capacity in the actual limit windows.",
+        [PresentationTextKey.SignalsQuotaSource] = "Existing official page cache · private adapter",
+        [PresentationTextKey.SignalsRate] = "Output rate",
+        [PresentationTextKey.SignalsRateUnsupported] = "Output counts and generation timing for the same turn are unavailable.",
+        [PresentationTextKey.SignalsSourceUpdatedAt] = "Source update",
+        [PresentationTextKey.SignalsSources] = "Sources and timestamps",
+        [PresentationTextKey.SignalsStale] = "The cache is stale. Reading it again does not refresh the source.",
+        [PresentationTextKey.SignalsStaleMarker] = "Stale",
+        [PresentationTextKey.SignalsTask] = "Current task",
+        [PresentationTextKey.SignalsTaskUnsupported] = "Selected-task identity and lifecycle are not verified for this version.",
+        [PresentationTextKey.SignalsTimeUnknown] = "Unknown",
+        [PresentationTextKey.SignalsTitle] = "Tasks and limits",
+        [PresentationTextKey.SignalsUnavailable] = "Unavailable",
         [PresentationTextKey.StatusCodexNotRunningDetail] = "You can open Codex again",
         [PresentationTextKey.StatusCodexNotRunningTitle] = "Codex is not running",
         [PresentationTextKey.StatusConnectedMany] = "Connected to {count} windows",
@@ -1125,5 +1256,8 @@ internal static class PresentationDefaults
         SuccessColor = "#30D158",
         WarningColor = "#FF9F0A",
         DangerColor = "#FF453A",
+        CapsuleWidth = 380,
+        CapsuleHeight = 68,
+        CapsuleCollapsedWidth = 200,
     };
 }

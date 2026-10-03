@@ -9,25 +9,28 @@ import (
 const PresentationContractVersion = 2
 
 type PresentationTokens struct {
-	WindowMinWidth      int    `json:"windowMinWidth"`
-	WindowMinHeight     int    `json:"windowMinHeight"`
-	WindowDefaultWidth  int    `json:"windowDefaultWidth"`
-	WindowDefaultHeight int    `json:"windowDefaultHeight"`
-	NavigationWidth     int    `json:"navigationWidth"`
-	ContentMaxWidth     int    `json:"contentMaxWidth"`
-	PagePadding         int    `json:"pagePadding"`
-	SectionSpacing      int    `json:"sectionSpacing"`
-	CardPadding         int    `json:"cardPadding"`
-	CardCornerRadius    int    `json:"cardCornerRadius"`
-	ControlSpacing      int    `json:"controlSpacing"`
-	CompactSpacing      int    `json:"compactSpacing"`
-	StatusIconSize      int    `json:"statusIconSize"`
-	AnimationFastMS     int    `json:"animationFastMS"`
-	AnimationStandardMS int    `json:"animationStandardMS"`
-	AccentColor         string `json:"accentColor"`
-	SuccessColor        string `json:"successColor"`
-	WarningColor        string `json:"warningColor"`
-	DangerColor         string `json:"dangerColor"`
+	WindowMinWidth        int    `json:"windowMinWidth"`
+	WindowMinHeight       int    `json:"windowMinHeight"`
+	WindowDefaultWidth    int    `json:"windowDefaultWidth"`
+	WindowDefaultHeight   int    `json:"windowDefaultHeight"`
+	NavigationWidth       int    `json:"navigationWidth"`
+	ContentMaxWidth       int    `json:"contentMaxWidth"`
+	PagePadding           int    `json:"pagePadding"`
+	SectionSpacing        int    `json:"sectionSpacing"`
+	CardPadding           int    `json:"cardPadding"`
+	CardCornerRadius      int    `json:"cardCornerRadius"`
+	ControlSpacing        int    `json:"controlSpacing"`
+	CompactSpacing        int    `json:"compactSpacing"`
+	StatusIconSize        int    `json:"statusIconSize"`
+	AnimationFastMS       int    `json:"animationFastMS"`
+	AnimationStandardMS   int    `json:"animationStandardMS"`
+	AccentColor           string `json:"accentColor"`
+	SuccessColor          string `json:"successColor"`
+	WarningColor          string `json:"warningColor"`
+	DangerColor           string `json:"dangerColor"`
+	CapsuleWidth          int    `json:"capsuleWidth"`
+	CapsuleHeight         int    `json:"capsuleHeight"`
+	CapsuleCollapsedWidth int    `json:"capsuleCollapsedWidth"`
 }
 
 type AvailableActions struct {
@@ -240,6 +243,7 @@ func PresentationTokensForPlatform(operatingSystem string) PresentationTokens {
 			ControlSpacing: 10, CompactSpacing: 6, StatusIconSize: 20,
 			AnimationFastMS: 120, AnimationStandardMS: 220,
 			AccentColor: "#0A84FF", SuccessColor: "#30D158", WarningColor: "#FF9F0A", DangerColor: "#FF453A",
+			CapsuleWidth: 380, CapsuleHeight: 68, CapsuleCollapsedWidth: 200,
 		}
 	}
 
@@ -250,11 +254,38 @@ func PresentationTokensForPlatform(operatingSystem string) PresentationTokens {
 		ControlSpacing: 12, CompactSpacing: 7, StatusIconSize: 36,
 		AnimationFastMS: 120, AnimationStandardMS: 220,
 		AccentColor: "#0A84FF", SuccessColor: "#30D158", WarningColor: "#FF9F0A", DangerColor: "#FF453A",
+		CapsuleWidth: 380, CapsuleHeight: 68, CapsuleCollapsedWidth: 200,
 	}
 }
 
 func presentationTextZhCN() map[string]string {
 	return map[string]string{
+		"signals.title":                               "任务与额度",
+		"signals.task":                                "当前任务",
+		"signals.rate":                                "输出速率",
+		"signals.quota":                               "账户额度",
+		"signals.unavailable":                         "暂不可用",
+		"signals.noSource":                            "尚未取得账户范围明确的额度；你可以继续使用 Codex。",
+		"signals.taskUnsupported":                     "当前版本尚未核验选中任务与生命周期来源。",
+		"signals.rateUnsupported":                     "尚无同回合输出计数和生成计时；不显示推算的 token/s。",
+		"signals.invalidFields":                       "额度来源缺少有效字段；未知值不会显示为零。",
+		"signals.quotaDetail":                         "显示实际额度窗口的剩余比例。",
+		"signals.quotaSource":                         "官方页面已有额度缓存 · 私有适配",
+		"signals.timeUnknown":                         "未知",
+		"signals.staleMarker":                         "陈旧",
+		"signals.stale":                               "缓存已陈旧；重新读取不代表官方来源已更新。",
+		"signals.sources":                             "来源与时间",
+		"signals.observedAt":                          "本地读取",
+		"signals.cacheUpdatedAt":                      "缓存更新",
+		"signals.sourceUpdatedAt":                     "源更新时间",
+		"capsule.title":                               "浮动胶囊",
+		"capsule.show":                                "显示胶囊",
+		"capsule.hide":                                "隐藏",
+		"capsule.collapse":                            "收起",
+		"capsule.expand":                              "展开",
+		"capsule.openPanel":                           "打开面板",
+		"capsule.resetPosition":                       "重置位置",
+		"capsule.detail":                              "显示同一份状态摘要；被动更新不切换焦点。",
 		"nav.appearance":                              "外观",
 		"appearance.title":                            "外观",
 		"appearance.subtitle":                         "调整官方 Codex 的主题与背景。",

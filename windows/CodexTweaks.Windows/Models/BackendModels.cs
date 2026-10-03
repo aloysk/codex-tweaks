@@ -236,6 +236,8 @@ internal sealed class BackendUpdateSnapshot
 
 internal sealed class BackendAppSnapshot
 {
+    public SignalsSnapshot Signals { get; init; } = new();
+
     [JsonPropertyName("appearance")]
     public AppearanceSnapshot Appearance { get; init; } = new();
 

@@ -11,10 +11,12 @@ public sealed partial class OverviewPage : Page
     private MainWindow? _host;
     private BackendAppSnapshot? _snapshot;
     private bool _rendering;
+    private readonly SignalsView _signals = new();
 
     public OverviewPage()
     {
         InitializeComponent();
+        SignalsContainer.Children.Add(_signals);
     }
 
     internal void Render(MainWindow host, BackendAppSnapshot snapshot)
@@ -22,6 +24,7 @@ public sealed partial class OverviewPage : Page
         _host = host;
         _snapshot = snapshot;
         _rendering = true;
+        _signals.Render(host, snapshot);
         try
         {
             PageTitle.Text = host.Text(PresentationTextKey.OverviewTitle);
@@ -105,6 +108,8 @@ public sealed partial class OverviewPage : Page
             _rendering = false;
         }
     }
+
+    internal void ClearSignals(MainWindow host) => _signals.Clear(host);
 
     private async void EnableToggle_Toggled(object sender, RoutedEventArgs e)
     {

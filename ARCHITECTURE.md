@@ -2,7 +2,7 @@
 
 This fork is a companion to the official Codex desktop app. The official window remains the place to chat, edit, approve and run work. Our native control panel, optional floating capsule and selected renderer enhancements surround that workflow. We do not patch, repack or replace the official executable or application bundle.
 
-The shared runtime foundation and isolated companion identity are implemented. The native control panel now includes an appearance page backed by Go settings and a narrow renderer adapter; task metrics and the capsule remain planned. Requirements and acceptance criteria live in the [PRD](docs/desktop-enhancement/PRD.zh-CN.md); this document owns component boundaries, directory placement and naming.
+The shared runtime foundation and isolated companion identity are implemented. The native control panel now includes an appearance page backed by Go settings and a narrow renderer adapter; the current draft adds a Go-owned quota snapshot and optional native capsule. Task and output-rate sources remain unavailable, and runtime acceptance is outstanding. Requirements and acceptance criteria live in the [PRD](docs/desktop-enhancement/PRD.zh-CN.md); this document owns component boundaries, directory placement and naming.
 
 ## Existing system
 
